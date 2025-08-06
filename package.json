@@ -1,0 +1,85 @@
+{
+  "name": "agentic-ai-system",
+  "version": "1.0.0",
+  "description": "Sophisticated agentic AI system integrating with Cursor IDE via MCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "mcp": "ts-node src/mcp-server-entry.ts",
+    "sse": "ts-node src/sse-server.ts",
+    "hybrid": "ts-node src/echo-mcp-server.ts",
+    "start-hybrid": "node start-hybrid-mcp.js",
+    "test-hybrid": "node test-hybrid-mcp.js",
+    "test-hybrid-verbose": "node test-hybrid-verbose.js",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:security": "jest tests/security",
+    "test:performance": "jest tests/performance",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "test:tdd": "npm run test:unit && npm run test:integration && npm run test:security && npm run test:performance"
+  },
+  "keywords": [
+    "ai",
+    "agentic",
+    "mcp",
+    "cursor",
+    "nuxt",
+    "vue",
+    "typescript"
+  ],
+  "author": "Agentic AI System",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "events": "^3.3.0",
+    "eventsource": "^4.0.0",
+    "express": "^4.18.2",
+    "fs": "^0.0.1-security",
+    "helmet": "^7.1.0",
+    "node-fetch": "^3.3.2",
+    "path": "^0.12.7",
+    "puppeteer": "^21.0.0",
+    "ws": "^8.14.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.0.0",
+    "prettier": "^3.0.0",
+    "rimraf": "^5.0.0",
+    "ts-jest": "^29.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agentic-ai/agentic-ai-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agentic-ai/agentic-ai-system/issues"
+  },
+  "homepage": "https://github.com/agentic-ai/agentic-ai-system#readme"
+}
