@@ -1,11 +1,12 @@
-# MCP SSE Integration
+# InDOM - DOM Inspection & Management
 
-A Model Context Protocol (MCP) server implementation with Server-Sent Events (SSE) integration for Cursor IDE.
+A Model Context Protocol (MCP) server implementation with Server-Sent Events (SSE) integration for Cursor IDE, focused on DOM inspection and management.
 
 ## 🚀 Features
 
 - **MCP Protocol**: Full Model Context Protocol support
 - **SSE Integration**: Server-Sent Events for real-time communication
+- **DOM Inspection**: Advanced browser DOM inspection and manipulation
 - **Filesystem Operations**: Secure file reading, writing, and directory operations
 - **Browser Integration**: Web application inspection and automation
 - **Project Analysis**: Comprehensive project structure analysis
@@ -22,7 +23,7 @@ A Model Context Protocol (MCP) server implementation with Server-Sent Events (SS
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd webCursorIntegrationMCP
+   cd indom
    ```
 
 2. **Install dependencies**
@@ -44,7 +45,7 @@ Create or update your `mcp.json` file in your Cursor configuration:
 ```json
 {
   "mcpServers": {
-    "agentic-ai": {
+    "indom": {
       "command": "node",
       "args": ["dist/index.js"],
       "env": {

@@ -92,6 +92,8 @@ export class CDPConnectionManager extends EventEmitter {
     }
 
     try {
+      console.log(`🔧 [CDP] Creating connection for session: ${sessionId}`)
+      
       const browserOptions: any = {}
       if (this.options.headless !== undefined) {
         browserOptions.headless = this.options.headless
@@ -100,10 +102,15 @@ export class CDPConnectionManager extends EventEmitter {
         browserOptions.args = this.options.args
       }
       
+      console.log(`🔧 [CDP] Launching browser with options:`, browserOptions)
       const browser = await puppeteer.launch(browserOptions)
+      console.log(`✅ [CDP] Browser launched successfully for session: ${sessionId}`)
 
       const page = await browser.newPage()
+      console.log(`✅ [CDP] Page created for session: ${sessionId}`)
+      
       const cdpSession = await page.target().createCDPSession()
+      console.log(`✅ [CDP] CDP session created for session: ${sessionId}`)
 
       const connection: CDPConnection = {
         browser,
@@ -115,9 +122,12 @@ export class CDPConnectionManager extends EventEmitter {
 
       this.connections.set(sessionId, connection)
       this.emit('connectionCreated', sessionId)
+      
+      console.log(`✅ [CDP] Connection created successfully for session: ${sessionId}`)
 
       return connection
     } catch (error) {
+      console.error(`❌ [CDP] Failed to create connection for session: ${sessionId}`, error)
       throw new Error(`Failed to create CDP connection: ${error}`)
     }
   }

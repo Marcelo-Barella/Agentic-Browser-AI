@@ -74,7 +74,7 @@ class SSEServer {
     })
 
     // SSE endpoint for real-time communication
-    this.app.get('/events', (req: Request, res: Response) => {
+    this.app.get('/sse', (req: Request, res: Response) => {
       this.handleSSEConnection(req, res)
     })
 
@@ -353,13 +353,13 @@ class SSEServer {
    * Start the SSE server
    */
   async start(): Promise<void> {
-    const port = 3003
+    const port = parseInt(process.env.PORT || '3001')
     this.app.listen(port, () => {
       getLogger().info(`✅ AgenticAI SSE Server running on port ${port}`, {
         module: 'SSEServer',
         operation: 'start'
       })
-      getLogger().info(`🔗 SSE endpoint: http://localhost:${port}/events`, {
+      getLogger().info(`🔗 SSE endpoint: http://localhost:${port}/sse`, {
         module: 'SSEServer',
         operation: 'start'
       })
@@ -390,7 +390,7 @@ class SSEServer {
   } {
     return {
       isInitialized: this.isInitialized,
-      port: 3003,
+      port: parseInt(process.env.PORT || '3001'),
       activeClients: this.clients.size,
       serverName: MCP_SERVER_INFO.name,
       serverVersion: MCP_SERVER_INFO.version
@@ -470,6 +470,6 @@ async function main() {
 }
 
 // Run main if this is the entry point
-if (require.main === module) {
+if (import.meta.url.endsWith('sse-server.js')) {
   main()
 } 

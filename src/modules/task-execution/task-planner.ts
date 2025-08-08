@@ -4,9 +4,9 @@
  * Integrates with existing ProjectAnalyzer and BrowserManager
  */
 
-import { ProjectAnalyzer } from '../project-analyzer'
-import { BrowserManager } from '../browser/browser-manager'
-import { ErrorHandler } from '../../core/error-handler'
+// Removed project analyzer per cleanup plan
+import { BrowserManager } from '../browser/browser-manager.js'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 export interface TaskRequirement {
   id: string
@@ -53,7 +53,7 @@ export interface TaskContext {
 }
 
 export class TaskPlanner {
-  private projectAnalyzer: ProjectAnalyzer | null = null
+  private projectAnalyzer: any | null = null
   private browserManager: BrowserManager
   private errorHandler: ErrorHandler
   private isInitialized = false
@@ -97,9 +97,7 @@ export class TaskPlanner {
       }
 
       // Initialize project analyzer if needed
-      if (!this.projectAnalyzer) {
-        this.projectAnalyzer = new ProjectAnalyzer(context.projectPath)
-      }
+      // ProjectAnalyzer removed
 
       // Analyze the requirement
       const analysis = await this.analyzeRequirement(requirement, context)

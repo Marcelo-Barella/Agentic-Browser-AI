@@ -5,11 +5,10 @@
  */
 
 import { EventEmitter } from 'events'
-import { ExecutionPlan, ExecutionStep, TaskContext } from './task-planner'
-import { BrowserManager } from '../browser/browser-manager'
-import { ProjectAnalyzer } from '../project-analyzer'
-import { FileSystemManager } from '../filesystem-manager'
-import { ErrorHandler } from '../../core/error-handler'
+import { ExecutionPlan, ExecutionStep, TaskContext } from './task-planner.js'
+import { BrowserManager } from '../browser/browser-manager.js'
+// Removed non-browser modules per cleanup plan
+import { ErrorHandler } from '../../core/error-handler.js'
 
 export interface TaskExecutionResult {
   taskId: string
@@ -53,7 +52,6 @@ export interface ExecutionContext {
 
 export class TaskExecutor extends EventEmitter {
   private browserManager: BrowserManager
-  private fileSystemManager: FileSystemManager
   private errorHandler: ErrorHandler
   private activeExecutions: Map<string, TaskExecution> = new Map()
   private isInitialized = false
@@ -61,7 +59,6 @@ export class TaskExecutor extends EventEmitter {
   constructor() {
     super()
     this.browserManager = new BrowserManager()
-    this.fileSystemManager = new FileSystemManager()
     this.errorHandler = new ErrorHandler()
   }
 
@@ -299,19 +296,8 @@ export class TaskExecutor extends EventEmitter {
    * Execute code analysis step
    */
   private async executeCodeAnalysis(step: ExecutionStep, context: ExecutionContext): Promise<any> {
-    const { projectPath, files, analysisType } = context.parameters
-
-    // Create project analyzer if needed
-    const projectAnalyzer = new ProjectAnalyzer(projectPath)
-
-    switch (analysisType) {
-      case 'impact':
-        return await projectAnalyzer.analyzeStructure()
-      case 'comprehensive':
-        return await projectAnalyzer.analyzeStructure()
-      default:
-        return await projectAnalyzer.analyzeStructure()
-    }
+    // Project analysis removed
+    return { status: 'skipped', reason: 'project analysis removed' }
   }
 
   /**
@@ -375,57 +361,8 @@ export class TaskExecutor extends EventEmitter {
    * Execute file operation step
    */
   private async executeFileOperation(step: ExecutionStep, context: ExecutionContext): Promise<any> {
-    const { projectPath, operations } = context.parameters
-
-    const results: any[] = []
-
-    for (const operation of operations) {
-      switch (operation.type) {
-        case 'read':
-          const content = await this.fileSystemManager.readFile(operation.path)
-          results.push({
-            operation: 'read',
-            path: operation.path,
-            result: content
-          })
-          break
-
-        case 'write':
-          await this.fileSystemManager.writeFile(operation.path, operation.content)
-          results.push({
-            operation: 'write',
-            path: operation.path,
-            status: 'completed'
-          })
-          break
-
-        case 'delete':
-          await this.fileSystemManager.deleteFile(operation.path)
-          results.push({
-            operation: 'delete',
-            path: operation.path,
-            status: 'completed'
-          })
-          break
-
-        case 'list':
-          const files = await this.fileSystemManager.listDirectory(operation.path)
-          results.push({
-            operation: 'list',
-            path: operation.path,
-            result: files
-          })
-          break
-
-        default:
-          throw new Error(`Unknown file operation: ${operation.type}`)
-      }
-    }
-
-    return {
-      operations: results,
-      projectPath
-    }
+    // Filesystem operations removed
+    return { status: 'skipped', reason: 'filesystem operations removed' }
   }
 
   /**
@@ -487,17 +424,7 @@ export class TaskExecutor extends EventEmitter {
       }
     }
 
-    // Check file existence
-    if (validationRules.fileExists) {
-      const { projectPath } = context.parameters
-      // Check if project path exists using listDirectory
-      try {
-        await this.fileSystemManager.listDirectory(projectPath)
-      } catch {
-        throw new Error(`Project path does not exist: ${projectPath}`)
-      }
-              // File exists check completed above
-    }
+    // File existence check removed
 
     // Check browser availability
     if (validationRules.browserAvailable) {

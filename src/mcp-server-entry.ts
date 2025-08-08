@@ -7,8 +7,8 @@
  */
 
 import * as readline from 'readline'
-import { AgenticAISystem } from './index.ts'
-import { getLogger } from './core/logger.ts'
+import { AgenticAISystem } from './index'
+import { getLogger } from './core/logger'
 
 // MCP Protocol Constants
 const MCP_PROTOCOL_VERSION = "2024-11-05"

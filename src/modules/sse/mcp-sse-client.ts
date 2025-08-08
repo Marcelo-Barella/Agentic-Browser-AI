@@ -57,7 +57,7 @@ export class MCPSSEClient {
 
       // Create MCP client
       this.client = new Client({
-        name: "agentic-ai-mcp-client",
+        name: "indom-mcp-client",
         version: "1.0.0"
       })
 

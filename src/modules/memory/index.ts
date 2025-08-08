@@ -4,14 +4,14 @@
  * Provides unified interface for memory storage, retrieval, and session management
  */
 
-export { MemoryStore } from './memory-store'
-export type { MemoryEntry, MemoryQuery, MemorySearchResult, VectorDatabaseConfig } from './memory-store'
-export { SessionMemoryManager } from './session-memory-manager'
-export type { SessionState, SessionMemoryConfig } from './session-memory-manager'
+export { MemoryStore } from './memory-store.js'
+export type { MemoryEntry, MemoryQuery, MemorySearchResult, VectorDatabaseConfig } from './memory-store.js'
+export { SessionMemoryManager } from './session-memory-manager.js'
+export type { SessionState, SessionMemoryConfig } from './session-memory-manager.js'
 
-import { MemoryStore, VectorDatabaseConfig } from './memory-store'
-import { SessionMemoryManager, SessionMemoryConfig } from './session-memory-manager'
-import { ErrorHandler } from '../../core/error-handler'
+import { MemoryStore, VectorDatabaseConfig } from './memory-store.js'
+import { SessionMemoryManager, SessionMemoryConfig } from './session-memory-manager.js'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 /**
  * Memory Manager

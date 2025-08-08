@@ -4,17 +4,17 @@
  * Provides unified interface for task planning, execution, and scheduling
  */
 
-export { TaskPlanner } from './task-planner'
-export type { TaskRequirement, ExecutionPlan, ExecutionStep, TaskContext } from './task-planner'
-export { TaskExecutor } from './task-executor'
-export type { TaskExecution, TaskExecutionResult } from './task-executor'
-export { TaskScheduler } from './task-scheduler'
-export type { QueuedTask, TaskQueue, SchedulerConfig, SchedulerStats } from './task-scheduler'
+export { TaskPlanner } from './task-planner.js'
+export type { TaskRequirement, ExecutionPlan, ExecutionStep, TaskContext } from './task-planner.js'
+export { TaskExecutor } from './task-executor.js'
+export type { TaskExecution, TaskExecutionResult } from './task-executor.js'
+export { TaskScheduler } from './task-scheduler.js'
+export type { QueuedTask, TaskQueue, SchedulerConfig, SchedulerStats } from './task-scheduler.js'
 
-import { TaskPlanner } from './task-planner'
-import { TaskExecutor } from './task-executor'
-import { TaskScheduler } from './task-scheduler'
-import { ErrorHandler } from '../../core/error-handler'
+import { TaskPlanner } from './task-planner.js'
+import { TaskExecutor } from './task-executor.js'
+import { TaskScheduler } from './task-scheduler.js'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 /**
  * Task Execution Manager

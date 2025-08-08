@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { MemoryStore, MemoryEntry, MemoryQuery } from './memory-store'
+import { MemoryStore, MemoryEntry, MemoryQuery } from './memory-store.js'
 
 export interface SessionState {
   sessionId: string

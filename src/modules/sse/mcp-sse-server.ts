@@ -27,7 +27,7 @@ export class MCPSSEServer {
   constructor(config: MCPServerConfig = {
     port: 3000,
     corsOrigin: "*",
-    serverName: "agentic-ai-mcp-server",
+    serverName: "indom-mcp-server",
     serverVersion: "1.0.0"
   }) {
     this.config = config

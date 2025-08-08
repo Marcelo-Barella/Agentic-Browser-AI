@@ -1,7 +1,7 @@
 {
-  "name": "agentic-ai-system",
+  "name": "indom",
   "version": "1.0.0",
-  "description": "Sophisticated agentic AI system integrating with Cursor IDE via MCP",
+  "description": "DOM inspection and management system for Cursor IDE via MCP",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -76,10 +76,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/agentic-ai/agentic-ai-system.git"
+    "url": "https://github.com/your-username/indom.git"
   },
   "bugs": {
-    "url": "https://github.com/agentic-ai/agentic-ai-system/issues"
+    "url": "https://github.com/your-username/indom/issues"
   },
-  "homepage": "https://github.com/agentic-ai/agentic-ai-system#readme"
+  "homepage": "https://github.com/your-username/indom#readme"
 }

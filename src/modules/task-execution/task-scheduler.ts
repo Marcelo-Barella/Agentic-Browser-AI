@@ -5,9 +5,9 @@
  */
 
 import { EventEmitter } from 'events'
-import { TaskPlanner, TaskRequirement, ExecutionPlan, TaskContext } from './task-planner'
-import { TaskExecutor, TaskExecution } from './task-executor'
-import { ErrorHandler } from '../../core/error-handler'
+import { TaskPlanner, TaskRequirement, ExecutionPlan, TaskContext } from './task-planner.js'
+import { TaskExecutor, TaskExecution } from './task-executor.js'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 export interface QueuedTask {
   id: string

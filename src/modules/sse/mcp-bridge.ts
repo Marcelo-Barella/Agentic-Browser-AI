@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events'
-import { MCPServer } from '../../core/mcp-server'
-import { SSEServer, SSEEvent } from './sse-server'
+import { MCPServer } from '../../core/mcp-server.js'
+import { SSEServer, SSEEvent } from './sse-server.js'
 
 /**
  * MCP Bridge Module

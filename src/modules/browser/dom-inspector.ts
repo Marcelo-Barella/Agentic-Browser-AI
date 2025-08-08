@@ -1,4 +1,4 @@
-import { CDPConnectionManager, CDPRequest } from './cdp-connection-manager'
+import { CDPConnectionManager, CDPRequest } from './cdp-connection-manager.js'
 
 export interface DOMElement {
   nodeId: number

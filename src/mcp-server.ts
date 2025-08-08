@@ -9,6 +9,8 @@ import * as readline from 'readline'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { getLogger } from './core/logger.js'
+import { BrowserManager } from './modules/browser/browser-manager.js'
+import { BrowserTools } from './modules/browser/browser-tools.js'
 
 // MCP Protocol Constants
 const MCP_PROTOCOL_VERSION = "2024-11-05"
@@ -52,13 +54,19 @@ class MCPServer {
   private requestCount: number = 0
   private debugMode: boolean
   private logger: any
-  private logFilePath: string
+  private logFilePath!: string
+  private browserManager: BrowserManager
+  private browserTools: BrowserTools
 
   constructor() {
     this.debugMode = process.env.DEBUG_MCP === 'true'
     
     // Initialize main logger
     this.logger = getLogger()
+    
+    // Initialize browser components
+    this.browserManager = new BrowserManager()
+    this.browserTools = new BrowserTools(this.browserManager)
     
     // Set up readline interface for stdin/stdout
     this.rl = readline.createInterface({
@@ -129,6 +137,14 @@ class MCPServer {
         operation: 'start'
       })
       
+      // Initialize browser tools
+      await this.browserTools.initialize()
+      
+      this.logger.info('🌐 Browser automation tools initialized', {
+        module: 'MCPServer',
+        operation: 'start'
+      })
+      
       // Send initial notification immediately
       this.sendInitialNotification()
       
@@ -149,27 +165,27 @@ class MCPServer {
       })
       
       // Handle shutdown gracefully
-      process.on('SIGINT', () => this.shutdown())
-      process.on('SIGTERM', () => this.shutdown())
+      process.on('SIGINT', async () => await this.shutdown())
+      process.on('SIGTERM', async () => await this.shutdown())
       
       // Handle uncaught exceptions
-      process.on('uncaughtException', (error) => {
+      process.on('uncaughtException', async (error) => {
         this.logger.critical('Uncaught exception', {
           module: 'MCPServer',
           operation: 'uncaughtException',
           error: error instanceof Error ? error : new Error(String(error))
         })
-        this.shutdown()
+        await this.shutdown()
       })
       
-      process.on('unhandledRejection', (reason, promise) => {
+      process.on('unhandledRejection', async (reason, promise) => {
         this.logger.critical('Unhandled promise rejection', {
           module: 'MCPServer',
           operation: 'unhandledRejection',
           error: reason instanceof Error ? reason : new Error(String(reason)),
           data: { promise: promise.toString() }
         })
-        this.shutdown()
+        await this.shutdown()
       })
       
     } catch (error) {
@@ -275,7 +291,7 @@ class MCPServer {
         error: error instanceof Error ? error : new Error(String(error)),
         data: { requestId, line: line.substring(0, 100) }
       })
-      this.sendError(request.id || requestId, -32700, 'Parse error')
+      this.sendError(requestId, -32700, 'Parse error')
     }
   }
 
@@ -291,8 +307,8 @@ class MCPServer {
     
     this.isInitialized = true
     
-    const response = {
-      jsonrpc: "2.0",
+    const response: MCPResponse = {
+      jsonrpc: "2.0" as const,
       id: request.id,
       result: {
         protocolVersion: MCP_PROTOCOL_VERSION,
@@ -324,76 +340,418 @@ class MCPServer {
       data: { requestId: request.id }
     })
     
-    // Pre-define tools for faster response
+    // Pre-define browser-only tools with AI selectors
     const tools = [
       {
-        name: "filesystem.read",
-        description: "Read file content from filesystem",
+        name: "browser.navigate",
+        description: "Navigate to URL with options",
         inputSchema: {
           type: "object",
           properties: {
-            path: {
+            sessionId: {
               type: "string",
-              description: "Path to the file to read"
-            }
-          },
-          required: ["path"]
-        }
-      },
-      {
-        name: "filesystem.write",
-        description: "Write content to filesystem",
-        inputSchema: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "Path to the file to write"
+              description: "Browser session ID"
             },
-            content: {
+            url: {
               type: "string",
-              description: "Content to write to the file"
+              description: "URL to navigate to"
+            },
+            timeout: {
+              type: "number",
+              description: "Navigation timeout in milliseconds"
+            },
+            waitUntil: {
+              type: "string",
+              description: "Wait condition: load, domcontentloaded, networkidle0, networkidle2"
             }
           },
-          required: ["path", "content"]
+          required: ["sessionId", "url"]
         }
       },
       {
-        name: "filesystem.list",
-        description: "List directory contents",
+        name: "browser.find_element_ai",
+        description: "Find element using AI-powered natural language description",
         inputSchema: {
           type: "object",
           properties: {
-            path: {
+            sessionId: { type: "string", description: "Browser session ID" },
+            description: { type: "string", description: "Natural language description" },
+            context: { type: "object", description: "Optional search context" }
+          },
+          required: ["sessionId", "description"]
+        }
+      },
+      {
+        name: "browser.generate_selectors",
+        description: "Generate multiple robust selectors for an element",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string", description: "Browser session ID" },
+            elementSelector: { type: "string", description: "Initial CSS selector" }
+          },
+          required: ["sessionId", "elementSelector"]
+        }
+      },
+      {
+        name: "browser.analyze_page_semantics",
+        description: "Analyze page structure and element relationships",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string", description: "Browser session ID" }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.click",
+        description: "Click element by selector",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
               type: "string",
-              description: "Path to the directory to list"
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector for element to click"
+            },
+            timeout: {
+              type: "number",
+              description: "Timeout in milliseconds"
+            },
+            waitForVisible: {
+              type: "boolean",
+              description: "Wait for element to be visible"
             }
           },
-          required: ["path"]
+          required: ["sessionId", "selector"]
         }
       },
       {
-        name: "system.info",
-        description: "Get system information and capabilities",
+        name: "browser.fill",
+        description: "Fill form element with value",
         inputSchema: {
           type: "object",
-          properties: {},
-          required: []
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector for element to fill"
+            },
+            value: {
+              type: "string",
+              description: "Value to fill"
+            },
+            timeout: {
+              type: "number",
+              description: "Timeout in milliseconds"
+            }
+          },
+          required: ["sessionId", "selector", "value"]
         }
       },
       {
-        name: "mcp.status",
-        description: "Get MCP server status and connection info",
+        name: "browser.select",
+        description: "Select option from dropdown",
         inputSchema: {
           type: "object",
-          properties: {},
-          required: []
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector for select element"
+            },
+            value: {
+              type: "string",
+              description: "Value to select"
+            }
+          },
+          required: ["sessionId", "selector", "value"]
+        }
+      },
+      {
+        name: "browser.wait",
+        description: "Wait for element or condition",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector to wait for"
+            },
+            timeout: {
+              type: "number",
+              description: "Timeout in milliseconds"
+            },
+            condition: {
+              type: "string",
+              description: "Wait condition: visible, enabled, clickable"
+            }
+          },
+          required: ["sessionId", "selector"]
+        }
+      },
+      {
+        name: "browser.screenshot",
+        description: "Capture page or element screenshot",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            fullPage: {
+              type: "boolean",
+              description: "Capture full page"
+            },
+            quality: {
+              type: "number",
+              description: "Image quality (1-100)"
+            },
+            type: {
+              type: "string",
+              description: "Image type: png, jpeg"
+            },
+            path: {
+              type: "string",
+              description: "Path to save screenshot"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.extract",
+        description: "Extract content from specific elements",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector for element to extract"
+            },
+            format: {
+              type: "string",
+              description: "Output format: text, html, json"
+            }
+          },
+          required: ["sessionId", "selector"]
+        }
+      },
+      {
+        name: "browser.execute",
+        description: "Execute JavaScript code",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            script: {
+              type: "string",
+              description: "JavaScript code to execute"
+            },
+            timeout: {
+              type: "number",
+              description: "Execution timeout in milliseconds"
+            },
+            sandbox: {
+              type: "boolean",
+              description: "Run in sandbox mode"
+            }
+          },
+          required: ["sessionId", "script"]
+        }
+      },
+      {
+        name: "browser.back",
+        description: "Navigate back in history",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.forward",
+        description: "Navigate forward in history",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.refresh",
+        description: "Refresh current page",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.html",
+        description: "Get page HTML content",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            sanitize: {
+              type: "boolean",
+              description: "Sanitize HTML content"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.text",
+        description: "Extract text content from page",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector for specific element"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.inspect",
+        description: "Inspect browser page and get detailed information",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "URL to inspect"
+            }
+          },
+          required: ["url"]
+        }
+      },
+      {
+        name: "browser.network",
+        description: "Monitor network requests and responses",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            action: {
+              type: "string",
+              description: "Network monitoring action: start, stop, get"
+            }
+          },
+          required: ["sessionId", "action"]
+        }
+      },
+      {
+        name: "browser.state",
+        description: "Manage cookies and browser storage",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            action: {
+              type: "string",
+              description: "State management action: getCookies, setCookie, deleteCookie, getLocalStorage, setLocalStorageItem"
+            },
+            key: {
+              type: "string",
+              description: "Storage key"
+            },
+            value: {
+              type: "string",
+              description: "Storage value"
+            },
+            domain: {
+              type: "string",
+              description: "Cookie domain"
+            }
+          },
+          required: ["sessionId", "action"]
+        }
+      },
+      {
+        name: "browser.scroll",
+        description: "Scroll page or specific elements",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            selector: {
+              type: "string",
+              description: "CSS selector for element to scroll"
+            },
+            x: {
+              type: "number",
+              description: "Horizontal scroll amount"
+            },
+            y: {
+              type: "number",
+              description: "Vertical scroll amount"
+            }
+          },
+          required: ["sessionId"]
         }
       }
     ]
     
-    const response = {
-      jsonrpc: "2.0",
+    const response: MCPResponse = {
+      jsonrpc: "2.0" as const,
       id: request.id,
       result: {
         tools: tools
@@ -497,16 +855,47 @@ class MCPServer {
     })
     
     switch (toolName) {
-      case 'filesystem.read':
-        return await this.readFile(args.path)
-      case 'filesystem.write':
-        return await this.writeFile(args.path, args.content)
-      case 'filesystem.list':
-        return await this.listDirectory(args.path)
-      case 'system.info':
-        return await this.getSystemInfo()
-      case 'mcp.status':
-        return await this.getMCPStatus()
+      // Removed non-browser tools
+      case 'browser.navigate':
+        return await this.executeBrowserTool('navigate', args)
+      case 'browser.click':
+        return await this.executeBrowserTool('click', args)
+      case 'browser.fill':
+        return await this.executeBrowserTool('fill', args)
+      case 'browser.select':
+        return await this.executeBrowserTool('select', args)
+      case 'browser.wait':
+        return await this.executeBrowserTool('wait', args)
+      case 'browser.screenshot':
+        return await this.executeBrowserTool('screenshot', args)
+      case 'browser.extract':
+        return await this.executeBrowserTool('extract', args)
+      case 'browser.execute':
+        return await this.executeBrowserTool('execute', args)
+      case 'browser.back':
+        return await this.executeBrowserTool('back', args)
+      case 'browser.forward':
+        return await this.executeBrowserTool('forward', args)
+      case 'browser.refresh':
+        return await this.executeBrowserTool('refresh', args)
+      case 'browser.html':
+        return await this.executeBrowserTool('getHTML', args)
+      case 'browser.text':
+        return await this.executeBrowserTool('getText', args)
+      case 'browser.inspect':
+        return await this.executeBrowserInspect(args.url)
+      case 'browser.find_element_ai':
+        return await this.executeBrowserTool('findElementAI', args)
+      case 'browser.generate_selectors':
+        return await this.executeBrowserTool('generateSelectorsAI', args)
+      case 'browser.analyze_page_semantics':
+        return await this.executeBrowserTool('analyzeSemanticsAI', args)
+      case 'browser.network':
+        return await this.executeBrowserTool('network', args)
+      case 'browser.state':
+        return await this.executeBrowserTool('state', args)
+      case 'browser.scroll':
+        return await this.executeBrowserTool('scroll', args)
       default:
         throw new Error(`Unknown tool: ${toolName}`)
     }
@@ -639,7 +1028,12 @@ class MCPServer {
       isInitialized: this.isInitialized,
       requestCount: this.requestCount,
       debugMode: this.debugMode,
-      uptime: process.uptime()
+      uptime: process.uptime(),
+      browserTools: {
+        ready: this.browserTools.isReady(),
+        activeSessions: this.browserTools.getActiveSessions().length,
+        stats: this.browserTools.getBrowserStats()
+      }
     }
     
     this.logger.info('MCP status retrieved', {
@@ -649,6 +1043,163 @@ class MCPServer {
     })
     
     return `MCP Server Status:\n\n${JSON.stringify(status, null, 2)}`
+  }
+
+  /**
+   * Execute browser tool
+   */
+  async executeBrowserTool(method: string, args: Record<string, any>): Promise<string> {
+    try {
+      const sessionId = args.sessionId || `session_${Date.now()}`
+      
+      // Ensure browser tools are initialized
+      if (!this.browserTools.isReady()) {
+        await this.browserTools.initialize()
+      }
+      
+      // Create session if it doesn't exist
+      const activeSessions = this.browserTools.getActiveSessions()
+      if (!activeSessions.includes(sessionId)) {
+        const createResult = await this.browserTools.createSession(sessionId)
+        if (!createResult.success) {
+          throw new Error(`Failed to create browser session: ${createResult.error}`)
+        }
+      }
+      
+      let result: any
+      
+      switch (method) {
+        case 'navigate':
+          result = await this.browserTools.navigate(sessionId, args.url, args)
+          break
+        case 'click':
+          result = await this.browserTools.click(sessionId, args.selector, args)
+          break
+        case 'fill':
+          result = await this.browserTools.fill(sessionId, args.selector, args.value, args)
+          break
+        case 'select':
+          result = await this.browserTools.select(sessionId, args.selector, args.value, args)
+          break
+        case 'wait':
+          result = await this.browserTools.wait(sessionId, args.selector, args)
+          break
+        case 'screenshot':
+          result = await this.browserTools.screenshot(sessionId, args)
+          break
+        case 'extract':
+          result = await this.browserTools.extract(sessionId, args.selector, args)
+          break
+        case 'execute':
+          result = await this.browserTools.execute(sessionId, args.script, args)
+          break
+        case 'back':
+          result = await this.browserTools.back(sessionId)
+          break
+        case 'forward':
+          result = await this.browserTools.forward(sessionId)
+          break
+        case 'refresh':
+          result = await this.browserTools.refresh(sessionId)
+          break
+        case 'getHTML':
+          result = await this.browserTools.getHTML(sessionId)
+          break
+        case 'getText':
+          result = await this.browserTools.getText(sessionId, args.selector)
+          break
+        case 'findElementAI':
+          result = await this.browserTools.findElementAI(sessionId, args.description, args.context)
+          break
+        case 'generateSelectorsAI':
+          result = await this.browserTools.generateSelectorsAI(sessionId, args.elementSelector)
+          break
+        case 'analyzeSemanticsAI':
+          result = await this.browserTools.analyzeSemanticsAI(sessionId)
+          break
+        case 'network':
+          result = await this.browserTools.network(sessionId, args.action)
+          break
+        case 'state':
+          result = await this.browserTools.state(sessionId, args.action, args.key, args.value, args.domain)
+          break
+        case 'scroll':
+          result = await this.browserTools.scroll(sessionId, args.selector, args.x, args.y)
+          break
+        default:
+          throw new Error(`Unknown browser method: ${method}`)
+      }
+      
+      if (result.success) {
+        return `Browser operation '${method}' completed successfully:\n\n${JSON.stringify(result.data, null, 2)}`
+      } else {
+        throw new Error(result.error || 'Browser operation failed')
+      }
+    } catch (error) {
+      this.logger.error(`Browser tool execution failed: ${method}`, {
+        module: 'MCPServer',
+        operation: 'executeBrowserTool',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { method, args }
+      })
+      throw error
+    }
+  }
+
+  /**
+   * Execute browser inspection
+   */
+  async executeBrowserInspect(url: string): Promise<string> {
+    try {
+      const sessionId = `inspect_${Date.now()}`
+      
+      // Ensure browser tools are initialized
+      if (!this.browserTools.isReady()) {
+        await this.browserTools.initialize()
+      }
+      
+      // Create session and navigate
+      const createResult = await this.browserTools.createSession(sessionId, url)
+      if (!createResult.success) {
+        throw new Error(`Failed to create browser session: ${createResult.error}`)
+      }
+      
+      const navigateResult = await this.browserTools.navigate(sessionId, url)
+      if (!navigateResult.success) {
+        throw new Error(`Failed to navigate to URL: ${navigateResult.error}`)
+      }
+      
+      // Get page information
+      const htmlResult = await this.browserTools.getHTML(sessionId)
+      const textResult = await this.browserTools.getText(sessionId)
+      
+      // Close session
+      await this.browserTools.closeSession(sessionId)
+      
+      const inspectionResult = {
+        url,
+        sessionId,
+        html: htmlResult.success ? htmlResult.data.html : null,
+        text: textResult.success ? textResult.data.text : null,
+        timestamp: new Date().toISOString()
+      }
+      
+      this.logger.info('Browser inspection completed', {
+        module: 'MCPServer',
+        operation: 'executeBrowserInspect',
+        data: { url, sessionId }
+      })
+      
+      return `Browser inspection for ${url}:\n\n${JSON.stringify(inspectionResult, null, 2)}`
+    } catch (error) {
+      this.logger.error('Browser inspection failed', {
+        module: 'MCPServer',
+        operation: 'executeBrowserInspect',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { url }
+      })
+      throw error
+    }
   }
 
   /**
@@ -759,13 +1310,14 @@ class MCPServer {
   /**
    * Shutdown server gracefully
    */
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     this.logger.info('🛑 Shutting down MCP Server...', {
       module: 'MCPServer',
       operation: 'shutdown'
     })
     
     try {
+      await this.browserTools.shutdown()
       this.rl.close()
       this.logger.info('✅ MCP Server shutdown complete', {
         module: 'MCPServer',

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "agentic-ai": {
+    "inDOM": {
       "type": "streamable-http",
-      "url": "http://127.0.0.1:3001/sse"
+      "url": "http://172.26.208.1:3100/sse"
     }
   }
 }

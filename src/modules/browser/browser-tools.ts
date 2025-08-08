@@ -1,0 +1,756 @@
+import { BrowserManager } from './browser-manager.js'
+import { getLogger } from '../../core/logger.js'
+
+export interface BrowserToolResult {
+  success: boolean
+  data?: any
+  error?: string
+  sessionId?: string
+  timestamp: Date
+}
+
+export class BrowserTools {
+  private browserManager: BrowserManager
+  private logger: any
+  private activeSessions: Set<string> = new Set()
+
+  constructor(browserManager: BrowserManager) {
+    this.browserManager = browserManager
+    this.logger = getLogger()
+  }
+
+  async initialize(): Promise<void> {
+    await this.browserManager.initialize()
+    this.logger.info('Browser Tools initialized', {
+      module: 'BrowserTools',
+      operation: 'initialize'
+    })
+  }
+
+  async createSession(sessionId: string, url?: string): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.createSession(sessionId, url)
+      this.activeSessions.add(sessionId)
+      
+      this.logger.info('Browser session created', {
+        module: 'BrowserTools',
+        operation: 'createSession',
+        data: { sessionId, url }
+      })
+
+      return {
+        success: true,
+        data: { sessionId, url },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to create browser session', {
+        module: 'BrowserTools',
+        operation: 'createSession',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, url }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async navigate(sessionId: string, url: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.navigateToUrl(sessionId, url)
+      
+      this.logger.info('Browser navigation completed', {
+        module: 'BrowserTools',
+        operation: 'navigate',
+        data: { sessionId, url }
+      })
+
+      return {
+        success: true,
+        data: { url },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to navigate', {
+        module: 'BrowserTools',
+        operation: 'navigate',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, url }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async click(sessionId: string, selector: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.clickElement(sessionId, selector, options)
+      
+      this.logger.info('Element clicked', {
+        module: 'BrowserTools',
+        operation: 'click',
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: true,
+        data: { selector },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to click element', {
+        module: 'BrowserTools',
+        operation: 'click',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async fill(sessionId: string, selector: string, value: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.fillElement(sessionId, selector, value, options)
+      
+      this.logger.info('Element filled', {
+        module: 'BrowserTools',
+        operation: 'fill',
+        data: { sessionId, selector, valueLength: value.length }
+      })
+
+      return {
+        success: true,
+        data: { selector, value },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to fill element', {
+        module: 'BrowserTools',
+        operation: 'fill',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async select(sessionId: string, selector: string, value: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.selectOption(sessionId, selector, value, options)
+      
+      this.logger.info('Option selected', {
+        module: 'BrowserTools',
+        operation: 'select',
+        data: { sessionId, selector, value }
+      })
+
+      return {
+        success: true,
+        data: { selector, value },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to select option', {
+        module: 'BrowserTools',
+        operation: 'select',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector, value }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async scroll(sessionId: string, selector?: string, x?: number, y?: number): Promise<BrowserToolResult> {
+    try {
+      if (selector) {
+        const script = `
+          const element = document.querySelector('${selector}');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+            return { scrolled: true, selector: '${selector}' };
+          }
+          return { scrolled: false, error: 'Element not found' };
+        `
+        const result = await this.browserManager.executeJavaScript(sessionId, script)
+        
+        this.logger.info('Element scrolled', {
+          module: 'BrowserTools',
+          operation: 'scroll',
+          data: { sessionId, selector }
+        })
+
+        return {
+          success: true,
+          data: { selector, result },
+          sessionId,
+          timestamp: new Date()
+        }
+      } else {
+        const scrollX = x || 0
+        const scrollY = y || 0
+        const script = `window.scrollTo(${scrollX}, ${scrollY}); ({ x: ${scrollX}, y: ${scrollY} })`
+        const result = await this.browserManager.executeJavaScript(sessionId, script)
+        
+        this.logger.info('Page scrolled', {
+          module: 'BrowserTools',
+          operation: 'scroll',
+          data: { sessionId, x: scrollX, y: scrollY }
+        })
+
+        return {
+          success: true,
+          data: { x: scrollX, y: scrollY, result },
+          sessionId,
+          timestamp: new Date()
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to scroll', {
+        module: 'BrowserTools',
+        operation: 'scroll',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector, x, y }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async wait(sessionId: string, selector: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const element = await this.browserManager.waitForElement(sessionId, selector, options)
+      
+      this.logger.info('Element found', {
+        module: 'BrowserTools',
+        operation: 'wait',
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: true,
+        data: { selector, element },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to wait for element', {
+        module: 'BrowserTools',
+        operation: 'wait',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async back(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.goBack(sessionId)
+      
+      this.logger.info('Navigated back', {
+        module: 'BrowserTools',
+        operation: 'back',
+        data: { sessionId }
+      })
+
+      return {
+        success: true,
+        data: { action: 'back' },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to navigate back', {
+        module: 'BrowserTools',
+        operation: 'back',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async forward(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.goForward(sessionId)
+      
+      this.logger.info('Navigated forward', {
+        module: 'BrowserTools',
+        operation: 'forward',
+        data: { sessionId }
+      })
+
+      return {
+        success: true,
+        data: { action: 'forward' },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to navigate forward', {
+        module: 'BrowserTools',
+        operation: 'forward',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async refresh(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.refresh(sessionId)
+      
+      this.logger.info('Page refreshed', {
+        module: 'BrowserTools',
+        operation: 'refresh',
+        data: { sessionId }
+      })
+
+      return {
+        success: true,
+        data: { action: 'refresh' },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to refresh page', {
+        module: 'BrowserTools',
+        operation: 'refresh',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async screenshot(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.takeScreenshot(sessionId, options)
+      
+      this.logger.info('Screenshot captured', {
+        module: 'BrowserTools',
+        operation: 'screenshot',
+        data: { sessionId, format: result.format, size: result.size }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to capture screenshot', {
+        module: 'BrowserTools',
+        operation: 'screenshot',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async extract(sessionId: string, selector: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const element = await this.browserManager.getElementInfo(sessionId, selector)
+      
+      this.logger.info('Content extracted', {
+        module: 'BrowserTools',
+        operation: 'extract',
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: true,
+        data: { selector, element },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to extract content', {
+        module: 'BrowserTools',
+        operation: 'extract',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async execute(sessionId: string, script: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.executeJavaScript(sessionId, script, options)
+      
+      this.logger.info('Script executed', {
+        module: 'BrowserTools',
+        operation: 'execute',
+        data: { sessionId, scriptLength: script.length }
+      })
+
+      return {
+        success: true,
+        data: { result },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to execute script', {
+        module: 'BrowserTools',
+        operation: 'execute',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, scriptLength: script.length }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  // AI-powered wrappers
+  async findElementAI(sessionId: string, description: string, context?: any): Promise<BrowserToolResult> {
+    try {
+      const match = await this.browserManager.findElementByDescription(sessionId, description, context)
+      this.logger.info('AI element found', { module: 'BrowserTools', operation: 'findElementAI', data: { sessionId } })
+      return { success: true, data: match, sessionId, timestamp: new Date() }
+    } catch (error) {
+      this.logger.error('Failed to find element AI', { module: 'BrowserTools', operation: 'findElementAI', error: error instanceof Error ? error : new Error(String(error)) })
+      return { success: false, error: error instanceof Error ? error.message : String(error), sessionId, timestamp: new Date() }
+    }
+  }
+
+  async generateSelectorsAI(sessionId: string, elementSelector: string): Promise<BrowserToolResult> {
+    try {
+      const strategies = await this.browserManager.generateRobustSelectors(sessionId, elementSelector)
+      this.logger.info('AI selectors generated', { module: 'BrowserTools', operation: 'generateSelectorsAI', data: { sessionId } })
+      return { success: true, data: { strategies }, sessionId, timestamp: new Date() }
+    } catch (error) {
+      this.logger.error('Failed to generate AI selectors', { module: 'BrowserTools', operation: 'generateSelectorsAI', error: error instanceof Error ? error : new Error(String(error)) })
+      return { success: false, error: error instanceof Error ? error.message : String(error), sessionId, timestamp: new Date() }
+    }
+  }
+
+  async analyzeSemanticsAI(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      const map = await this.browserManager.analyzePageSemanticsAI(sessionId)
+      this.logger.info('AI semantics analyzed', { module: 'BrowserTools', operation: 'analyzeSemanticsAI', data: { sessionId } })
+      return { success: true, data: map, sessionId, timestamp: new Date() }
+    } catch (error) {
+      this.logger.error('Failed to analyze AI semantics', { module: 'BrowserTools', operation: 'analyzeSemanticsAI', error: error instanceof Error ? error : new Error(String(error)) })
+      return { success: false, error: error instanceof Error ? error.message : String(error), sessionId, timestamp: new Date() }
+    }
+  }
+
+  async getHTML(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      const html = await this.browserManager.executeJavaScript(sessionId, 'document.documentElement.outerHTML')
+      
+      this.logger.info('HTML content retrieved', {
+        module: 'BrowserTools',
+        operation: 'getHTML',
+        data: { sessionId, htmlLength: html.length }
+      })
+
+      return {
+        success: true,
+        data: { html },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to get HTML', {
+        module: 'BrowserTools',
+        operation: 'getHTML',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async getText(sessionId: string, selector?: string): Promise<BrowserToolResult> {
+    try {
+      const script = selector 
+        ? `document.querySelector('${selector}')?.textContent || ''`
+        : 'document.body.textContent || ""'
+      
+      const text = await this.browserManager.executeJavaScript(sessionId, script)
+      
+      this.logger.info('Text content retrieved', {
+        module: 'BrowserTools',
+        operation: 'getText',
+        data: { sessionId, selector, textLength: text.length }
+      })
+
+      return {
+        success: true,
+        data: { text, selector },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to get text', {
+        module: 'BrowserTools',
+        operation: 'getText',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, selector }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async network(sessionId: string, action: string): Promise<BrowserToolResult> {
+    try {
+      let result: any
+      
+      switch (action) {
+        case 'start':
+          result = await this.browserManager.getNetworkMetrics(sessionId)
+          break
+        case 'stop':
+          result = { message: 'Network monitoring stopped' }
+          break
+        case 'get':
+          result = await this.browserManager.getNetworkMetrics(sessionId)
+          break
+        default:
+          throw new Error(`Unknown network action: ${action}`)
+      }
+      
+      this.logger.info('Network operation completed', {
+        module: 'BrowserTools',
+        operation: 'network',
+        data: { sessionId, action }
+      })
+
+      return {
+        success: true,
+        data: { action, result },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to perform network operation', {
+        module: 'BrowserTools',
+        operation: 'network',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, action }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async state(sessionId: string, action: string, key?: string, value?: string, domain?: string): Promise<BrowserToolResult> {
+    try {
+      let result: any
+      
+      switch (action) {
+        case 'getCookies':
+          result = await this.browserManager.getCookies(sessionId, domain)
+          break
+        case 'setCookie':
+          if (!key || !value) {
+            throw new Error('Cookie name and value are required')
+          }
+          await this.browserManager.setCookie(sessionId, { name: key, value, domain })
+          result = { message: 'Cookie set successfully' }
+          break
+        case 'deleteCookie':
+          if (!key) {
+            throw new Error('Cookie name is required')
+          }
+          await this.browserManager.deleteCookie(sessionId, key, domain)
+          result = { message: 'Cookie deleted successfully' }
+          break
+        case 'getLocalStorage':
+          result = await this.browserManager.getLocalStorage(sessionId)
+          break
+        case 'setLocalStorageItem':
+          if (!key || !value) {
+            throw new Error('Key and value are required')
+          }
+          await this.browserManager.setLocalStorageItem(sessionId, key, value)
+          result = { message: 'Local storage item set successfully' }
+          break
+        default:
+          throw new Error(`Unknown state action: ${action}`)
+      }
+      
+      this.logger.info('State operation completed', {
+        module: 'BrowserTools',
+        operation: 'state',
+        data: { sessionId, action, key }
+      })
+
+      return {
+        success: true,
+        data: { action, result },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to perform state operation', {
+        module: 'BrowserTools',
+        operation: 'state',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, action, key }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async closeSession(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.closeSession(sessionId)
+      this.activeSessions.delete(sessionId)
+      
+      this.logger.info('Browser session closed', {
+        module: 'BrowserTools',
+        operation: 'closeSession',
+        data: { sessionId }
+      })
+
+      return {
+        success: true,
+        data: { sessionId },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to close session', {
+        module: 'BrowserTools',
+        operation: 'closeSession',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  getActiveSessions(): string[] {
+    return Array.from(this.activeSessions)
+  }
+
+  getBrowserStats(): any {
+    return this.browserManager.getBrowserStats()
+  }
+
+  isReady(): boolean {
+    return this.browserManager.isReady()
+  }
+
+  async shutdown(): Promise<void> {
+    for (const sessionId of this.activeSessions) {
+      await this.closeSession(sessionId)
+    }
+    await this.browserManager.shutdown()
+  }
+}

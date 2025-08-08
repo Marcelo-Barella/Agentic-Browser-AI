@@ -1,11 +1,16 @@
-import { MCPSSEServer } from './mcp-sse-server'
-import { MCPSSEClient } from './mcp-sse-client'
-import { SSEServer } from './sse-server'
-import { MCPBridge } from './mcp-bridge'
+import { MCPSSEServer } from './mcp-sse-server.js'
+import { MCPSSEClient } from './mcp-sse-client.js'
+import { SSEServer } from './sse-server.js'
+import { MCPBridge } from './mcp-bridge.js'
 
 /**
- * MCP SSE Integration Example
- * Shows how to integrate the MCP SSE implementation with the existing system
+ * MCP SSE Integration Module
+ * 
+ * InDOM MCP SSE Integration
+ * Provides real-time communication between MCP server and SSE clients
+ * 
+ * @author InDOM Team
+ * @version 1.0.0
  */
 
 export class MCPSSEIntegration {
@@ -19,7 +24,7 @@ export class MCPSSEIntegration {
     this.mcpServer = new MCPSSEServer({
       port: 3000,
       corsOrigin: "*",
-      serverName: "agentic-ai-mcp-server",
+      serverName: "indom-mcp-server",
       serverVersion: "1.0.0"
     })
 
@@ -50,7 +55,7 @@ export class MCPSSEIntegration {
    */
   async initialize(): Promise<void> {
     try {
-      console.log('🚀 Initializing MCP SSE Integration...')
+      console.log('🚀 Initializing InDOM MCP SSE Integration...')
 
       // Start the MCP SSE server
       await this.mcpServer.initialize()
@@ -65,10 +70,10 @@ export class MCPSSEIntegration {
       console.log('✅ MCP Bridge initialized')
 
       this.isInitialized = true
-      console.log('🎉 MCP SSE Integration ready!')
+      console.log('🎉 InDOM MCP SSE Integration ready!')
 
     } catch (error) {
-      console.error('❌ Failed to initialize MCP SSE Integration:', error)
+      console.error('❌ Failed to initialize InDOM MCP SSE Integration:', error)
       throw error
     }
   }
@@ -94,7 +99,7 @@ export class MCPSSEIntegration {
    * Shutdown the integrated system
    */
   async shutdown(): Promise<void> {
-    console.log('🛑 Shutting down MCP SSE Integration...')
+    console.log('🛑 Shutting down InDOM MCP SSE Integration...')
 
     try {
       await this.mcpBridge.shutdown()
@@ -102,7 +107,7 @@ export class MCPSSEIntegration {
       await this.mcpServer.shutdown()
       
       this.isInitialized = false
-      console.log('✅ MCP SSE Integration shutdown complete')
+      console.log('✅ InDOM MCP SSE Integration shutdown complete')
     } catch (error) {
       console.error('❌ Error during shutdown:', error)
     }

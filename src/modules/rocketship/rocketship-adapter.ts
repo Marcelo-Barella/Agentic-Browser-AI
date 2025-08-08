@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { ErrorHandler } from '../../core/error-handler'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 export interface RocketshipTest {
   id: string

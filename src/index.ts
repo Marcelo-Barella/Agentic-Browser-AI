@@ -6,10 +6,9 @@
  */
 
 import { MCPServer } from './core/mcp-server.js'
-import { ProjectAnalyzer } from './modules/project-analyzer.js'
-import { FileSystemManager } from './modules/filesystem-manager.js'
+// Removed non-browser modules per cleanup plan
 import { ErrorHandler } from './core/error-handler.js'
-import { DocumentationGenerator } from './modules/documentation-generator.js'
+// Removed documentation generator per cleanup plan
 import { BrowserManager } from './modules/browser/browser-manager.js'
 import { TaskExecutionManager } from './modules/task-execution/index.js'
 import { TaskAPI } from './modules/api/task-api.js'
@@ -30,10 +29,9 @@ export class AgenticAISystem {
   getMCPServer(): MCPServer {
     return this._mcpServer
   }
-  private projectAnalyzer: ProjectAnalyzer | null = null
-  private fileSystemManager: FileSystemManager
+  // Removed: projectAnalyzer, fileSystemManager
   private errorHandler: ErrorHandler
-  private documentationGenerator: DocumentationGenerator
+  // Removed: documentationGenerator
   private browserManager: BrowserManager
   private taskExecutionManager: TaskExecutionManager
   private taskAPI: TaskAPI
@@ -46,9 +44,7 @@ export class AgenticAISystem {
   constructor() {
     // Initialize core components
     this._mcpServer = new MCPServer()
-    this.fileSystemManager = new FileSystemManager()
     this.errorHandler = new ErrorHandler()
-    this.documentationGenerator = new DocumentationGenerator()
     this.browserManager = new BrowserManager()
     
     // Initialize Phase 3 components
@@ -69,7 +65,7 @@ export class AgenticAISystem {
     this.mcpSSEServer = new MCPSSEServer({
       port: 3000,
       corsOrigin: '*',
-      serverName: 'agentic-ai-mcp-server',
+      serverName: 'indom-mcp-server',
       serverVersion: '1.0.0'
     })
   }
@@ -115,85 +111,132 @@ export class AgenticAISystem {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.browserManager.initialize()
-      getLogger().debug('✅ Debug: Browser Manager initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.browserManager.initialize()
+        getLogger().debug('✅ Debug: Browser Manager initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: Browser Manager initialization failed, continuing without browser support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
       // Initialize Phase 3 components
       getLogger().debug('🔧 Debug: Initializing Task Execution Manager...', {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.taskExecutionManager.initialize()
-      getLogger().debug('✅ Debug: Task Execution Manager initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.taskExecutionManager.initialize()
+        getLogger().debug('✅ Debug: Task Execution Manager initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: Task Execution Manager initialization failed, continuing without task execution support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
       getLogger().debug('🔧 Debug: Initializing Task API...', {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.taskAPI.initialize()
-      getLogger().debug('✅ Debug: Task API initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.taskAPI.initialize()
+        getLogger().debug('✅ Debug: Task API initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: Task API initialization failed, continuing without task API support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
       getLogger().debug('🔧 Debug: Initializing Rocketship Adapter...', {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.rocketshipAdapter.initialize()
-      getLogger().debug('✅ Debug: Rocketship Adapter initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.rocketshipAdapter.initialize()
+        getLogger().debug('✅ Debug: Rocketship Adapter initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: Rocketship Adapter initialization failed, continuing without rocketship support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
       // Initialize SSE components
       getLogger().debug('🔧 Debug: Initializing SSE Server...', {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.sseServer.initialize()
-      getLogger().debug('✅ Debug: SSE Server initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.sseServer.initialize()
+        getLogger().debug('✅ Debug: SSE Server initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: SSE Server initialization failed, continuing without SSE support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
       getLogger().debug('🔧 Debug: Initializing MCP Bridge...', {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.mcpBridge.initialize()
-      getLogger().debug('✅ Debug: MCP Bridge initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.mcpBridge.initialize()
+        getLogger().debug('✅ Debug: MCP Bridge initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: MCP Bridge initialization failed, continuing without bridge support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
       // Initialize MCP SSE Server
       getLogger().debug('🔧 Debug: Initializing MCP SSE Server...', {
         module: 'AgenticAISystem',
         operation: 'initialize'
       })
-      await this.mcpSSEServer.initialize()
-      getLogger().debug('✅ Debug: MCP SSE Server initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      try {
+        await this.mcpSSEServer.initialize()
+        getLogger().debug('✅ Debug: MCP SSE Server initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: MCP SSE Server initialization failed, continuing without MCP SSE support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
 
-      // Initialize documentation system
-      getLogger().debug('🔧 Debug: Initializing Documentation System...', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
-      await this.documentationGenerator.generateSystemStatusReport()
-      getLogger().debug('✅ Debug: Documentation System initialized successfully', {
-        module: 'AgenticAISystem',
-        operation: 'initialize'
-      })
+      // Documentation system removed
 
       // Set up error handling for all components
       getLogger().debug('🔧 Debug: Setting up error handling...', {
@@ -223,16 +266,7 @@ export class AgenticAISystem {
         operation: 'initialize'
       })
       
-      // Generate initial documentation
-      await this.documentationGenerator.addEntry({
-        id: 'init',
-        timestamp: new Date(),
-        type: 'info',
-        title: 'System Initialization',
-        description: 'Agentic AI System initialized successfully',
-        tags: ['initialization', 'system'],
-        priority: 'high'
-      })
+      // Removed documentation entries
 
     } catch (error) {
       console.error('❌ Failed to initialize Agentic AI System:', error)
@@ -251,176 +285,20 @@ export class AgenticAISystem {
   /**
    * Analyze a Nuxt.js project
    */
-  async analyzeProject(projectPath: string): Promise<any> {
-    try {
-      if (!this.isInitialized) {
-        throw new Error('System not initialized')
-      }
-
-      console.log(`📁 Analyzing project: ${projectPath}`)
-
-      // Create project analyzer
-      this.projectAnalyzer = new ProjectAnalyzer(projectPath)
-
-      // Analyze project structure
-      const structure = await this.projectAnalyzer.analyzeStructure()
-
-      // Document the analysis
-      await this.documentationGenerator.addEntry({
-        id: `analysis_${Date.now()}`,
-        timestamp: new Date(),
-        type: 'task',
-        title: 'Project Analysis',
-        description: `Analyzed Nuxt.js project at ${projectPath}`,
-        details: {
-          projectPath,
-          structure: {
-            type: structure.type,
-            version: structure.version,
-            components: structure.components.length,
-            pages: structure.pages.length,
-            layouts: structure.layouts.length
-          }
-        },
-        tags: ['analysis', 'nuxt', 'project'],
-        priority: 'high'
-      })
-
-      return structure
-    } catch (error) {
-      await this.errorHandler.handleError(
-        error as Error,
-        {
-          module: 'AgenticAISystem',
-          operation: 'analyzeProject',
-          parameters: { projectPath }
-        }
-      )
-      throw error
-    }
-  }
+  // Removed analyzeProject per cleanup plan
 
   /**
    * Read file from filesystem
    */
-  async readFile(path: string): Promise<string> {
-    try {
-      if (!this.isInitialized) {
-        throw new Error('System not initialized')
-      }
-
-      console.log(`📖 Reading file: ${path}`)
-      const content = await this.fileSystemManager.readFile(path)
-
-      // Document the file read operation
-      await this.documentationGenerator.addEntry({
-        id: `read_${Date.now()}`,
-        timestamp: new Date(),
-        type: 'task',
-        title: 'File Read',
-        description: `Read file: ${path}`,
-        details: {
-          path,
-          contentLength: content.length
-        },
-        tags: ['filesystem', 'read'],
-        priority: 'medium'
-      })
-
-      return content
-    } catch (error) {
-      await this.errorHandler.handleError(
-        error as Error,
-        {
-          module: 'AgenticAISystem',
-          operation: 'readFile',
-          parameters: { path }
-        }
-      )
-      throw error
-    }
-  }
+  // Removed filesystem read/write/list methods
 
   /**
    * Write file to filesystem
    */
-  async writeFile(path: string, content: string): Promise<void> {
-    try {
-      if (!this.isInitialized) {
-        throw new Error('System not initialized')
-      }
-
-      console.log(`📝 Writing file: ${path}`)
-      await this.fileSystemManager.writeFile(path, content)
-
-      // Document the file write operation
-      await this.documentationGenerator.addEntry({
-        id: `write_${Date.now()}`,
-        timestamp: new Date(),
-        type: 'task',
-        title: 'File Write',
-        description: `Wrote file: ${path}`,
-        details: {
-          path,
-          contentLength: content.length
-        },
-        tags: ['filesystem', 'write'],
-        priority: 'medium'
-      })
-    } catch (error) {
-      await this.errorHandler.handleError(
-        error as Error,
-        {
-          module: 'AgenticAISystem',
-          operation: 'writeFile',
-          parameters: { path, contentLength: content.length }
-        }
-      )
-      throw error
-    }
-  }
 
   /**
    * List directory contents
    */
-  async listDirectory(path: string): Promise<any> {
-    try {
-      if (!this.isInitialized) {
-        throw new Error('System not initialized')
-      }
-
-      console.log(`📂 Listing directory: ${path}`)
-      const directoryInfo = await this.fileSystemManager.listDirectory(path)
-
-      // Document the directory listing operation
-      await this.documentationGenerator.addEntry({
-        id: `list_${Date.now()}`,
-        timestamp: new Date(),
-        type: 'task',
-        title: 'Directory Listing',
-        description: `Listed directory: ${path}`,
-        details: {
-          path,
-          fileCount: directoryInfo.fileCount,
-          totalSize: directoryInfo.totalSize
-        },
-        tags: ['filesystem', 'list'],
-        priority: 'low'
-      })
-
-      return directoryInfo
-    } catch (error) {
-      await this.errorHandler.handleError(
-        error as Error,
-        {
-          module: 'AgenticAISystem',
-          operation: 'listDirectory',
-          parameters: { path }
-        }
-      )
-      throw error
-    }
-  }
 
   /**
    * Get system status
@@ -429,7 +307,6 @@ export class AgenticAISystem {
     isInitialized: boolean
     mcpServer: any
     errorHandler: any
-    documentation: any
     browser: any
     taskExecution: any
     rocketship: any
@@ -441,11 +318,6 @@ export class AgenticAISystem {
       isInitialized: this.isInitialized,
       mcpServer: this.mcpServer.getStatus(),
       errorHandler: this.errorHandler.getErrorStats(),
-      documentation: {
-        entries: this.documentationGenerator.getEntries().length,
-        tasks: this.documentationGenerator.getTasks().length,
-        decisions: this.documentationGenerator.getDecisions().length
-      },
       browser: this.browserManager.getBrowserStats(),
       taskExecution: this.taskExecutionManager.getStatus(),
       rocketship: {
@@ -469,16 +341,7 @@ export class AgenticAISystem {
         operation: 'shutdown'
       })
 
-      // Document the shutdown
-      await this.documentationGenerator.addEntry({
-        id: `shutdown_${Date.now()}`,
-        timestamp: new Date(),
-        type: 'info',
-        title: 'System Shutdown',
-        description: 'Agentic AI System shutting down',
-        tags: ['shutdown', 'system'],
-        priority: 'high'
-      })
+      // Removed documentation write on shutdown
 
       // Shutdown Phase 3 components
       await this.taskExecutionManager.shutdown()
@@ -497,8 +360,7 @@ export class AgenticAISystem {
       // Shutdown MCP server
       await this.mcpServer.shutdown()
 
-      // Generate final status report
-      await this.documentationGenerator.generateSystemStatusReport()
+      // Removed documentation status report
 
       this.isInitialized = false
       getLogger().info('✅ Agentic AI System shutdown complete', {
@@ -540,21 +402,7 @@ export class AgenticAISystem {
         sessionId: request.sessionId || 'default'
       })
 
-      // Document the MCP request
-      await this.documentationGenerator.addEntry({
-        id: `mcp_${Date.now()}`,
-        timestamp: new Date(),
-        type: 'task',
-        title: 'MCP Request',
-        description: `Handled MCP request: ${request.method}`,
-        details: {
-          method: request.method,
-          params: request.params,
-          sessionId: request.sessionId
-        },
-        tags: ['mcp', 'request'],
-        priority: 'medium'
-      })
+      // Documentation removed
 
       return result
     } catch (error) {
@@ -578,61 +426,12 @@ export class AgenticAISystem {
       console.log('🔧 Debug: Starting tool registration with MCP server...')
       console.log('📊 Debug: MCP Server status before registration:', this._mcpServer.isReady() ? 'Initialized' : 'Not Initialized')
 
-      // Register project analysis tool
-      console.log('🔧 Debug: Registering project.analyze tool...')
-      await this._mcpServer.registerTool({
-        name: 'project.analyze',
-        description: 'Analyze Nuxt.js project structure',
-        parameters: {
-          projectPath: { type: 'string', required: true }
-        },
-        handler: async (params: Record<string, any>) => {
-          console.log('🔧 Debug: project.analyze tool called with params:', params)
-          return await this.analyzeProject(params['projectPath'] as string)
-        }
-      })
-      console.log('✅ Debug: project.analyze tool registered successfully')
+      // Register browser tools
+      console.log('🔧 Debug: Registering browser tools...')
+      await this._mcpServer.registerBrowserTools(this.browserManager)
+      console.log('✅ Debug: Browser tools registered successfully')
 
-      // Register file read tool
-      console.log('🔧 Debug: Registering filesystem.read tool...')
-      await this._mcpServer.registerTool({
-        name: 'filesystem.read',
-        description: 'Read file from filesystem',
-        parameters: {
-          path: { type: 'string', required: true }
-        },
-        handler: async (params: Record<string, any>) => {
-          console.log('🔧 Debug: filesystem.read tool called with params:', params)
-          return await this.readFile(params['path'] as string)
-        }
-      })
-      console.log('✅ Debug: filesystem.read tool registered successfully')
-
-      // Register file write tool
-      await this._mcpServer.registerTool({
-        name: 'filesystem.write',
-        description: 'Write file to filesystem',
-        parameters: {
-          path: { type: 'string', required: true },
-          content: { type: 'string', required: true }
-        },
-        handler: async (params: Record<string, any>) => {
-          await this.writeFile(params['path'] as string, params['content'] as string)
-          return { success: true }
-        }
-      })
-
-      // Register directory listing tool
-      await this._mcpServer.registerTool({
-        name: 'filesystem.list',
-        description: 'List directory contents',
-        parameters: {
-          path: { type: 'string', required: true }
-        },
-        handler: async (params: Record<string, any>) => {
-          return await this.listDirectory(params['path'] as string)
-        }
-      })
+      // Removed non-browser tools registration (project.analyze, filesystem.*, system.info, mcp.status)
 
       // Register browser session creation tool
       await this._mcpServer.registerTool({
@@ -995,6 +794,9 @@ export class AgenticAISystem {
         }
       })
 
+      // Register system information tools
+      
+
       console.log('🔧 Tools registered with MCP server')
       console.log('📊 Debug: Tool registration summary:')
       getLogger().debug(`   - Total tools registered: ${this._mcpServer.getAllTools().length}`, {
@@ -1034,18 +836,7 @@ export class AgenticAISystem {
       )
     })
 
-    // Handle filesystem errors
-    this.fileSystemManager.getOperationLog().forEach(operation => {
-      if (!operation.success) {
-        this.errorHandler.handleError(
-          new Error(operation.error || 'Unknown filesystem error'),
-          {
-            module: 'FileSystemManager',
-            operation: operation.type
-          }
-        )
-      }
-    })
+    // Filesystem error hook removed
   }
 }
 
@@ -1147,6 +938,6 @@ async function main() {
 }
 
 // Run main if this is the entry point
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main()
 } 

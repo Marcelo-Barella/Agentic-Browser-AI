@@ -46,7 +46,6 @@ export class MCPServer extends EventEmitter {
   private tools: Map<string, MCPTool> = new Map()
   private sessions: Map<string, MCPSession> = new Map()
   private isInitialized: boolean = false
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private _authToken: string
 
   constructor() {
@@ -66,11 +65,6 @@ export class MCPServer extends EventEmitter {
       console.log('🔧 Debug: Generating authentication token...')
       this._authToken = this.generateAuthToken()
       console.log('✅ Debug: Authentication token generated successfully')
-      
-      // Register default tools
-      console.log('🔧 Debug: Registering default tools...')
-      await this.registerDefaultTools()
-      console.log('✅ Debug: Default tools registered successfully')
       
       // Initialize session management
       console.log('🔧 Debug: Initializing session management...')
@@ -131,6 +125,15 @@ export class MCPServer extends EventEmitter {
       // Update session activity
       this.updateSessionActivity(request.sessionId)
       
+      // Handle MCP protocol specific methods
+      if (request.method === 'tools/list') {
+        return this.handleToolDiscovery(request)
+      }
+      
+      if (request.method === 'tools/call') {
+        return this.handleToolCall(request)
+      }
+      
       // Route to appropriate tool
       console.log(`🔧 Debug: Looking for tool: ${request.method}`)
       const tool = this.tools.get(request.method)
@@ -155,6 +158,66 @@ export class MCPServer extends EventEmitter {
       console.error('❌ Error handling MCP request:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       return this.createErrorResponse(request.id, 500, `Internal server error: ${errorMessage}`)
+    }
+  }
+
+  /**
+   * Handle tool discovery request (MCP protocol)
+   */
+  private handleToolDiscovery(request: MCPRequest): MCPResponse {
+    console.log('🔍 Debug: Handling tool discovery request')
+    
+    const toolList = Array.from(this.tools.values()).map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: {
+        type: 'object',
+        properties: this.convertParametersToSchema(tool.parameters),
+        required: this.getRequiredParameters(tool.parameters)
+      }
+    }))
+    
+    console.log(`✅ Debug: Tool discovery completed: ${toolList.length} tools found`)
+    
+    return {
+      id: request.id,
+      result: {
+        tools: toolList
+      },
+      timestamp: Date.now()
+    }
+  }
+
+  /**
+   * Handle tool call request (MCP protocol)
+   */
+  private async handleToolCall(request: MCPRequest): Promise<MCPResponse> {
+    const toolName = request.params?.name
+    const toolParams = request.params?.arguments || {}
+    
+    if (!toolName) {
+      return this.createErrorResponse(request.id, 400, 'Missing tool name')
+    }
+    
+    const tool = this.tools.get(toolName)
+    if (!tool) {
+      return this.createErrorResponse(request.id, 404, `Tool '${toolName}' not found`)
+    }
+    
+    try {
+      const result = await tool.handler(toolParams)
+      return {
+        id: request.id,
+        result: {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }]
+        },
+        timestamp: Date.now()
+      }
+    } catch (error) {
+      return this.createErrorResponse(request.id, 500, `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -185,48 +248,497 @@ export class MCPServer extends EventEmitter {
   }
 
   /**
-   * Register default tools for the agentic AI system
+   * Register browser tools with the MCP server
    */
-  private async registerDefaultTools(): Promise<void> {
-    const defaultTools: MCPTool[] = [
-      {
-        name: 'project.analyze',
-        description: 'Analyze Nuxt.js project structure',
-        parameters: {
-          projectPath: { type: 'string', required: true }
-        },
-        handler: async (_params) => {
-          // Will be implemented by Project Analysis Module
-          return { status: 'pending', message: 'Project analysis tool not yet implemented' }
-        }
+  async registerBrowserTools(browserManager: any): Promise<void> {
+    console.log('🔧 Debug: Registering browser tools...')
+    
+    // Register browser session management tools
+    await this.registerTool({
+      name: 'browser.createSession',
+      description: 'Create a new browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        url: { type: 'string', required: false }
       },
-      {
-        name: 'filesystem.read',
-        description: 'Read file from filesystem',
-        parameters: {
-          path: { type: 'string', required: true }
-        },
-        handler: async (_params) => {
-          // Will be implemented by Filesystem Integration Module
-          return { status: 'pending', message: 'Filesystem tool not yet implemented' }
-        }
+      handler: async (params: Record<string, any>) => {
+        return await browserManager.createSession(
+          params['sessionId'] as string,
+          params['url'] as string
+        )
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.navigate',
+      description: 'Navigate to URL in browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        url: { type: 'string', required: true },
+        timeout: { type: 'number', required: false },
+        waitUntil: { type: 'string', required: false }
       },
-      {
-        name: 'browser.inspect',
-        description: 'Inspect live application through Chrome DevTools',
-        parameters: {
-          url: { type: 'string', required: true }
-        },
-        handler: async (_params) => {
-          // Will be implemented by Browser Integration Module
-          return { status: 'pending', message: 'Browser inspection tool not yet implemented' }
+      handler: async (params: Record<string, any>) => {
+        await browserManager.navigateToUrl(
+          params['sessionId'] as string,
+          params['url'] as string
+        )
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.click',
+      description: 'Click element by selector',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: true },
+        timeout: { type: 'number', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.clickElement(
+          params['sessionId'] as string,
+          params['selector'] as string,
+          params
+        )
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.fill',
+      description: 'Fill form element with value',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: true },
+        value: { type: 'string', required: true },
+        timeout: { type: 'number', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.fillElement(
+          params['sessionId'] as string,
+          params['selector'] as string,
+          params['value'] as string,
+          params
+        )
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.select',
+      description: 'Select option from dropdown',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: true },
+        value: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.selectOption(
+          params['sessionId'] as string,
+          params['selector'] as string,
+          params['value'] as string,
+          params
+        )
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.wait',
+      description: 'Wait for element or condition',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: true },
+        timeout: { type: 'number', required: false },
+        condition: { type: 'string', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const element = await browserManager.waitForElement(
+          params['sessionId'] as string,
+          params['selector'] as string,
+          params
+        )
+        return { element }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.screenshot',
+      description: 'Capture page or element screenshot',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        fullPage: { type: 'boolean', required: false },
+        quality: { type: 'number', required: false },
+        type: { type: 'string', required: false },
+        path: { type: 'string', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const result = await browserManager.takeScreenshot(
+          params['sessionId'] as string,
+          params
+        )
+        return result
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.extract',
+      description: 'Extract content from specific elements',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: true },
+        attribute: { type: 'string', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const element = await browserManager.getElementInfo(
+          params['sessionId'] as string,
+          params['selector'] as string
+        )
+        return { element }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.execute',
+      description: 'Execute JavaScript code',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        script: { type: 'string', required: true },
+        args: { type: 'array', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const result = await browserManager.executeJavaScript(
+          params['sessionId'] as string,
+          params['script'] as string,
+          params
+        )
+        return { result }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.back',
+      description: 'Navigate back in history',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.goBack(params['sessionId'] as string)
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.forward',
+      description: 'Navigate forward in history',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.goForward(params['sessionId'] as string)
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.refresh',
+      description: 'Refresh current page',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        timeout: { type: 'number', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.refresh(params['sessionId'] as string)
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.html',
+      description: 'Get page HTML content',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        const html = await browserManager.executeJavaScript(
+          params['sessionId'] as string,
+          'document.documentElement.outerHTML'
+        )
+        return { html }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.text',
+      description: 'Extract text content from page',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const script = params['selector'] 
+          ? `document.querySelector('${params['selector']}')?.textContent || ''`
+          : 'document.body.textContent || ""'
+        
+        const text = await browserManager.executeJavaScript(
+          params['sessionId'] as string,
+          script
+        )
+        return { text, selector: params['selector'] }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.scroll',
+      description: 'Scroll page or specific elements',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        selector: { type: 'string', required: false },
+        x: { type: 'number', required: false },
+        y: { type: 'number', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        if (params['selector']) {
+          const script = `
+            const element = document.querySelector('${params['selector']}');
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth' });
+              return { scrolled: true, selector: '${params['selector']}' };
+            }
+            return { scrolled: false, error: 'Element not found' };
+          `
+          const result = await browserManager.executeJavaScript(
+            params['sessionId'] as string,
+            script
+          )
+          return { selector: params['selector'], result }
+        } else {
+          const scrollX = params['x'] || 0
+          const scrollY = params['y'] || 0
+          const script = `window.scrollTo(${scrollX}, ${scrollY}); return { x: ${scrollX}, y: ${scrollY} };`
+          const result = await browserManager.executeJavaScript(
+            params['sessionId'] as string,
+            script
+          )
+          return { x: scrollX, y: scrollY, result }
         }
       }
-    ]
+    })
 
-    for (const tool of defaultTools) {
-      await this.registerTool(tool)
+    await this.registerTool({
+      name: 'browser.network',
+      description: 'Monitor network requests and responses',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        action: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        const action = params['action'] as string
+        let result: any
+        
+        switch (action) {
+          case 'start':
+          case 'get':
+            result = await browserManager.getNetworkMetrics(params['sessionId'] as string)
+            break
+          case 'stop':
+            result = { message: 'Network monitoring stopped' }
+            break
+          default:
+            throw new Error(`Unknown network action: ${action}`)
+        }
+        
+        return { action, result }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.state',
+      description: 'Manage cookies and browser storage',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        action: { type: 'string', required: true },
+        key: { type: 'string', required: false },
+        value: { type: 'string', required: false },
+        domain: { type: 'string', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const action = params['action'] as string
+        const sessionId = params['sessionId'] as string
+        let result: any
+        
+        switch (action) {
+          case 'getCookies':
+            result = await browserManager.getCookies(sessionId, params['domain'])
+            break
+          case 'setCookie':
+            if (!params['key'] || !params['value']) {
+              throw new Error('Cookie name and value are required')
+            }
+            await browserManager.setCookie(sessionId, { 
+              name: params['key'], 
+              value: params['value'], 
+              domain: params['domain'] 
+            })
+            result = { message: 'Cookie set successfully' }
+            break
+          case 'deleteCookie':
+            if (!params['key']) {
+              throw new Error('Cookie name is required')
+            }
+            await browserManager.deleteCookie(sessionId, params['key'], params['domain'])
+            result = { message: 'Cookie deleted successfully' }
+            break
+          case 'getLocalStorage':
+            result = await browserManager.getLocalStorage(sessionId)
+            break
+          case 'setLocalStorageItem':
+            if (!params['key'] || !params['value']) {
+              throw new Error('Key and value are required')
+            }
+            await browserManager.setLocalStorageItem(sessionId, params['key'], params['value'])
+            result = { message: 'Local storage item set successfully' }
+            break
+          default:
+            throw new Error(`Unknown state action: ${action}`)
+        }
+        
+        return { action, result }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.inspect',
+      description: 'Inspect browser page and get detailed information',
+      parameters: {
+        url: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        const url = params['url'] as string
+        const sessionId = `inspect_${Date.now()}`
+        
+        // Create session and navigate
+        await browserManager.createSession(sessionId, url)
+        await browserManager.navigateToUrl(sessionId, url)
+        
+        // Get page information
+        const html = await browserManager.executeJavaScript(sessionId, 'document.documentElement.outerHTML')
+        const text = await browserManager.executeJavaScript(sessionId, 'document.body.textContent || ""')
+        
+        // Close session
+        await browserManager.closeSession(sessionId)
+        
+        return {
+          url,
+          sessionId,
+          html,
+          text,
+          timestamp: new Date().toISOString()
+        }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.closeSession',
+      description: 'Close a browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.closeSession(params['sessionId'] as string)
+        return { success: true }
+      }
+    })
+
+    await this.registerTool({
+      name: 'browser.getSessions',
+      description: 'Get all browser sessions',
+      parameters: {},
+      handler: async () => {
+        return browserManager.getAllSessions()
+      }
+    })
+
+    // AI-powered element finding
+    await this.registerTool({
+      name: 'browser.find_element_ai',
+      description: 'Find element using AI-powered natural language description',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        description: { type: 'string', required: true },
+        context: { type: 'object', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const result = await browserManager.findElementByDescription(
+          params['sessionId'] as string,
+          params['description'] as string,
+          params['context'] as Record<string, any>
+        )
+        return result
+      }
+    })
+
+    // Robust selector generation
+    await this.registerTool({
+      name: 'browser.generate_selectors',
+      description: 'Generate multiple robust selectors for an element',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        elementSelector: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        const strategies = await browserManager.generateRobustSelectors(
+          params['sessionId'] as string,
+          params['elementSelector'] as string
+        )
+        return { strategies }
+      }
+    })
+
+    // Semantic page analysis
+    await this.registerTool({
+      name: 'browser.analyze_page_semantics',
+      description: 'Analyze page structure and element relationships',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        const map = await browserManager.analyzePageSemanticsAI(
+          params['sessionId'] as string
+        )
+        return map
+      }
+    })
+
+    console.log('✅ Debug: Browser tools registered successfully')
+  }
+
+  /**
+   * Convert tool parameters to JSON schema format
+   */
+  private convertParametersToSchema(parameters: Record<string, any>): Record<string, any> {
+    const schema: Record<string, any> = {}
+    
+    for (const [key, param] of Object.entries(parameters)) {
+      schema[key] = {
+        type: param.type || 'string',
+        ...(param.description && { description: param.description }),
+        ...(param.enum && { enum: param.enum }),
+        ...(param.default !== undefined && { default: param.default })
+      }
     }
+    
+    return schema
+  }
+
+  /**
+   * Get required parameters from tool parameters
+   */
+  private getRequiredParameters(parameters: Record<string, any>): string[] {
+    return Object.entries(parameters)
+      .filter(([_, param]) => param.required === true)
+      .map(([key, _]) => key)
   }
 
   /**
@@ -375,8 +887,8 @@ export class MCPServer extends EventEmitter {
       tools: Array.from(this.tools.keys()),
       connectionInfo: {
         type: 'sse',
-        port: 3003,
-        endpoint: '/events'
+        port: 3001,
+        endpoint: '/sse'
       }
     }
   }

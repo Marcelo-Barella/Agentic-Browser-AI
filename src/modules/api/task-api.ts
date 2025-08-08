@@ -5,9 +5,9 @@
  */
 
 // import { Request, Response } from 'express'
-import { TaskExecutionManager } from '../task-execution'
-import { TaskRequirement, TaskContext } from '../task-execution'
-import { ErrorHandler } from '../../core/error-handler'
+import { TaskExecutionManager } from '../task-execution/index.js'
+import { TaskRequirement, TaskContext } from '../task-execution/index.js'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 // Simple interfaces to replace Express types
 interface Request {

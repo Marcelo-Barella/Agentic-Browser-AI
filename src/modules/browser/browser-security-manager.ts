@@ -45,7 +45,7 @@ export class BrowserSecurityManager extends EventEmitter {
     this.policy = {
       allowedDomains: ['localhost', '127.0.0.1', '0.0.0.0'],
       blockedDomains: ['malware.example.com', 'phishing.example.com'],
-      allowedProtocols: ['http:', 'https:'],
+      allowedProtocols: ['http:', 'https:', 'data:'],
       maxRedirects: 5,
       timeout: 30000,
       sandbox: true,
@@ -102,8 +102,14 @@ export class BrowserSecurityManager extends EventEmitter {
         return validation
       }
 
-      // Check domain
+      // Check domain (skip for data URLs)
       const domain = urlObj.hostname.toLowerCase()
+      
+      // Skip domain validation for data URLs
+      if (urlObj.protocol === 'data:') {
+        // Data URLs are allowed if protocol is allowed
+        return validation
+      }
       
       // Check blocked domains
       if (this.policy.blockedDomains.some(blocked => domain.includes(blocked))) {

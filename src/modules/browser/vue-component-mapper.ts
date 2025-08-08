@@ -1,4 +1,4 @@
-import { DOMInspector, DOMElement } from './dom-inspector'
+import { DOMInspector, DOMElement } from './dom-inspector.js'
 
 export interface VueComponent {
   name: string

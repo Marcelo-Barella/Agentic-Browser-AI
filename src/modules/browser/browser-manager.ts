@@ -2,7 +2,13 @@ import { CDPConnectionManager } from './cdp-connection-manager.js'
 import { DOMInspector } from './dom-inspector.js'
 import { VueComponentMapper } from './vue-component-mapper.js'
 import { BrowserSecurityManager } from './browser-security-manager.js'
+import { PageController } from './page-controller.js'
+import { ScreenshotService } from './screenshot-service.js'
+import { NetworkMonitor } from './network-monitor.js'
+import { JavaScriptExecutor } from './js-executor.js'
+import { StateManager } from './state-manager.js'
 import { EventEmitter } from 'events'
+import { AIElementSelectorImpl, ElementMatch, SelectorStrategy, PageSemanticMap, DynamicStrategy } from './ai-element-selector.js'
 
 export interface BrowserSession {
   sessionId: string
@@ -36,6 +42,12 @@ export class BrowserManager extends EventEmitter {
   private domInspector: DOMInspector
   private vueMapper: VueComponentMapper
   private securityManager: BrowserSecurityManager
+  private pageController: PageController
+  private screenshotService: ScreenshotService
+  private networkMonitor: NetworkMonitor
+  private jsExecutor: JavaScriptExecutor
+  private stateManager: StateManager
+  private aiSelector?: AIElementSelectorImpl
   private sessions: Map<string, BrowserSession> = new Map()
   private operations: BrowserOperation[] = []
   private isInitialized: boolean = false
@@ -49,6 +61,12 @@ export class BrowserManager extends EventEmitter {
     })
     this.domInspector = new DOMInspector(this.cdpManager)
     this.vueMapper = new VueComponentMapper(this.domInspector)
+    this.pageController = new PageController(this.cdpManager)
+    this.screenshotService = new ScreenshotService(this.cdpManager)
+    this.networkMonitor = new NetworkMonitor(this.cdpManager)
+    this.jsExecutor = new JavaScriptExecutor(this.cdpManager)
+    this.stateManager = new StateManager(this.cdpManager)
+    this.aiSelector = new AIElementSelectorImpl(this.domInspector, this.jsExecutor)
   }
 
   async initialize(): Promise<void> {
@@ -59,7 +77,12 @@ export class BrowserManager extends EventEmitter {
     try {
       await Promise.all([
         this.securityManager.initialize(),
-        this.cdpManager.initialize()
+        this.cdpManager.initialize(),
+        this.pageController.initialize(),
+        this.screenshotService.initialize(),
+        this.networkMonitor.initialize(),
+        this.jsExecutor.initialize(),
+        this.stateManager.initialize()
       ])
 
       this.isInitialized = true
@@ -67,6 +90,39 @@ export class BrowserManager extends EventEmitter {
     } catch (error) {
       throw new Error(`Failed to initialize Browser Manager: ${error}`)
     }
+  }
+
+  // AI-powered element selection APIs
+  async findElementByDescription(sessionId: string, description: string, context?: any): Promise<ElementMatch> {
+    if (!this.aiSelector) {
+      throw new Error('AI selector not initialized')
+    }
+    return this.aiSelector.findElementByDescription(sessionId, description, context)
+  }
+
+  async generateRobustSelectors(sessionId: string, selector: string): Promise<SelectorStrategy[]> {
+    if (!this.aiSelector) {
+      throw new Error('AI selector not initialized')
+    }
+    const el = await this.domInspector.querySelector(sessionId, selector)
+    if (!el) throw new Error('Element not found')
+    return this.aiSelector.generateRobustSelectors(sessionId, el)
+  }
+
+  async analyzePageSemanticsAI(sessionId: string): Promise<PageSemanticMap> {
+    if (!this.aiSelector) {
+      throw new Error('AI selector not initialized')
+    }
+    return this.aiSelector.analyzePageSemantics(sessionId)
+  }
+
+  async handleDynamicElementsAI(sessionId: string, selector: string): Promise<DynamicStrategy> {
+    if (!this.aiSelector) {
+      throw new Error('AI selector not initialized')
+    }
+    const el = await this.domInspector.querySelector(sessionId, selector)
+    if (!el) throw new Error('Element not found')
+    return this.aiSelector.handleDynamicElements(sessionId, el)
   }
 
   async createSession(sessionId: string, url?: string): Promise<BrowserSession> {
@@ -85,6 +141,13 @@ export class BrowserManager extends EventEmitter {
     // Create CDP connection
     await this.cdpManager.createConnection(sessionId)
 
+    // Initialize all managers for this session
+    await Promise.all([
+      this.pageController.createPage(sessionId, url),
+      this.stateManager.createSession(sessionId),
+      this.networkMonitor.startMonitoring(sessionId)
+    ])
+
     const session: BrowserSession = {
       sessionId,
       url: url || '',
@@ -96,11 +159,6 @@ export class BrowserManager extends EventEmitter {
 
     this.sessions.set(sessionId, session)
     this.emit('sessionCreated', session)
-
-    // Navigate to URL if provided
-    if (url) {
-      await this.navigateToUrl(sessionId, url)
-    }
 
     return session
   }
@@ -117,8 +175,8 @@ export class BrowserManager extends EventEmitter {
       throw new Error('URL is blocked by security policy')
     }
 
-    // Navigate using CDP
-    await this.cdpManager.navigateToUrl(sessionId, url)
+    // Navigate using Page Controller
+    await this.pageController.navigateToUrl(sessionId, url)
 
     // Update session
     const session = this.sessions.get(sessionId)
@@ -218,17 +276,15 @@ export class BrowserManager extends EventEmitter {
     fullPage?: boolean
     quality?: number
     type?: 'png' | 'jpeg'
-  } = {}): Promise<Buffer> {
-    const connection = await this.cdpManager.getConnection(sessionId)
-    if (!connection) {
-      throw new Error('Session not found or inactive')
+    path?: string
+  } = {}): Promise<any> {
+    // Filter out quality parameter for PNG format to avoid Puppeteer errors
+    const filteredOptions = { ...options }
+    if (filteredOptions.type === 'png' && typeof filteredOptions.quality === 'number') {
+      delete filteredOptions.quality
     }
-
-    const screenshot = await connection.page.screenshot({
-      fullPage: options.fullPage || false,
-      quality: options.quality || 80,
-      type: options.type || 'png'
-    })
+    
+    const result = await this.screenshotService.captureScreenshot(sessionId, filteredOptions)
 
     this.logOperation({
       type: 'screenshot',
@@ -237,23 +293,12 @@ export class BrowserManager extends EventEmitter {
       timestamp: new Date()
     })
 
-    this.emit('screenshotTaken', sessionId)
-    return screenshot
+    this.emit('screenshotTaken', sessionId, result)
+    return result
   }
 
-  async executeJavaScript(sessionId: string, script: string): Promise<any> {
-    // Validate script for security
-    const validation = await this.securityManager.validateContent(script)
-    if (!validation.isValid) {
-      throw new Error(`Script validation failed: ${validation.reason}`)
-    }
-
-    const connection = await this.cdpManager.getConnection(sessionId)
-    if (!connection) {
-      throw new Error('Session not found or inactive')
-    }
-
-    const result = await connection.page.evaluate(script)
+  async executeJavaScript(sessionId: string, script: string, options: any = {}): Promise<any> {
+    const result = await this.jsExecutor.executeScript(sessionId, script, options)
 
     this.logOperation({
       type: 'execute',
@@ -285,8 +330,136 @@ export class BrowserManager extends EventEmitter {
     return await this.domInspector.searchElements(sessionId, criteria)
   }
 
+  async clickElement(sessionId: string, selector: string, options: any = {}): Promise<void> {
+    return await this.pageController.clickElement(sessionId, selector, options)
+  }
+
+  async fillElement(sessionId: string, selector: string, value: string, options: any = {}): Promise<void> {
+    return await this.pageController.fillElement(sessionId, selector, value, options)
+  }
+
+  async selectOption(sessionId: string, selector: string, value: string, options: any = {}): Promise<void> {
+    return await this.pageController.selectOption(sessionId, selector, value, options)
+  }
+
+  async scrollTo(sessionId: string, x: number, y: number): Promise<void> {
+    return await this.pageController.scrollTo(sessionId, x, y)
+  }
+
+  async setViewport(sessionId: string, options: any): Promise<void> {
+    return await this.pageController.setViewport(sessionId, options)
+  }
+
+  async goBack(sessionId: string): Promise<void> {
+    return await this.pageController.goBack(sessionId)
+  }
+
+  async goForward(sessionId: string): Promise<void> {
+    return await this.pageController.goForward(sessionId)
+  }
+
+  async refresh(sessionId: string): Promise<void> {
+    return await this.pageController.refresh(sessionId)
+  }
+
+  async waitForElement(sessionId: string, selector: string, options: any = {}): Promise<any> {
+    return await this.pageController.waitForElement(sessionId, selector, options)
+  }
+
+  async captureElementScreenshot(sessionId: string, selector: string, options: any = {}): Promise<any> {
+    return await this.screenshotService.captureElementScreenshot(sessionId, selector, options)
+  }
+
+  async generatePDF(sessionId: string, options: any = {}): Promise<any> {
+    return await this.screenshotService.generatePDF(sessionId, options)
+  }
+
+  async captureVisualAnalysis(sessionId: string, selector?: string): Promise<any> {
+    return await this.screenshotService.captureVisualAnalysis(sessionId, selector)
+  }
+
+  async getNetworkMetrics(sessionId: string): Promise<any> {
+    return this.networkMonitor.getNetworkMetrics()
+  }
+
+  async getSecurityThreats(sessionId: string): Promise<any> {
+    return this.networkMonitor.getSecurityThreats()
+  }
+
+  async executeFunction(sessionId: string, functionBody: string, args: any[] = [], options: any = {}): Promise<any> {
+    return await this.jsExecutor.executeFunction(sessionId, functionBody, args, options)
+  }
+
+  async injectScript(sessionId: string, script: string, options: any = {}): Promise<any> {
+    return await this.jsExecutor.injectScript(sessionId, script, options)
+  }
+
+  async executeAsyncScript(sessionId: string, script: string, options: any = {}): Promise<any> {
+    return await this.jsExecutor.executeAsyncScript(sessionId, script, options)
+  }
+
+  async getPerformanceMetrics(sessionId: string): Promise<any> {
+    return await this.jsExecutor.getPerformanceMetrics(sessionId)
+  }
+
+  async getCookies(sessionId: string, domain?: string): Promise<any> {
+    return await this.stateManager.getCookies(sessionId, domain)
+  }
+
+  async setCookie(sessionId: string, cookie: any): Promise<void> {
+    return await this.stateManager.setCookie(sessionId, cookie)
+  }
+
+  async deleteCookie(sessionId: string, name: string, domain?: string): Promise<void> {
+    return await this.stateManager.deleteCookie(sessionId, name, domain)
+  }
+
+  async getLocalStorage(sessionId: string): Promise<any> {
+    return await this.stateManager.getLocalStorage(sessionId)
+  }
+
+  async setLocalStorageItem(sessionId: string, key: string, value: string): Promise<void> {
+    return await this.stateManager.setLocalStorageItem(sessionId, key, value)
+  }
+
+  async getSessionStorage(sessionId: string): Promise<any> {
+    return await this.stateManager.getSessionStorage(sessionId)
+  }
+
+  async setSessionStorageItem(sessionId: string, key: string, value: string): Promise<void> {
+    return await this.stateManager.setSessionStorageItem(sessionId, key, value)
+  }
+
+  async saveCredential(sessionId: string, credential: any): Promise<void> {
+    return await this.stateManager.saveCredential(sessionId, credential)
+  }
+
+  async getCredentials(sessionId: string, type?: string): Promise<any> {
+    return await this.stateManager.getCredentials(sessionId, type)
+  }
+
+  async saveSessionState(sessionId: string, state: any): Promise<void> {
+    return await this.stateManager.saveSessionState(sessionId, state)
+  }
+
+  async restoreSessionState(sessionId: string): Promise<any> {
+    return await this.stateManager.restoreSessionState(sessionId)
+  }
+
+  getPageState(sessionId: string): any {
+    return this.pageController.getPageState(sessionId)
+  }
+
+  getAllPageStates(): any[] {
+    return this.pageController.getAllPageStates()
+  }
+
   async closeSession(sessionId: string): Promise<void> {
-    await this.cdpManager.closeConnection(sessionId)
+    await Promise.all([
+      this.cdpManager.closeConnection(sessionId),
+      this.networkMonitor.stopMonitoring(sessionId),
+      this.stateManager.clearSession(sessionId)
+    ])
     
     const session = this.sessions.get(sessionId)
     if (session) {
@@ -297,7 +470,11 @@ export class BrowserManager extends EventEmitter {
   }
 
   async closeAllSessions(): Promise<void> {
-    await this.cdpManager.closeAllConnections()
+    await Promise.all([
+      this.cdpManager.closeAllConnections(),
+      this.networkMonitor.shutdown(),
+      this.stateManager.clearAllSessions()
+    ])
     this.sessions.clear()
     this.emit('allSessionsClosed')
   }
@@ -324,13 +501,17 @@ export class BrowserManager extends EventEmitter {
     totalOperations: number
     cdpStats: any
     securityPolicy: any
+    networkMetrics: any
+    jsExecutionStats: any
   } {
     return {
       totalSessions: this.sessions.size,
       activeSessions: this.getActiveSessions().length,
       totalOperations: this.operations.length,
       cdpStats: this.cdpManager.getConnectionStats(),
-      securityPolicy: this.securityManager.getSecurityPolicy()
+      securityPolicy: this.securityManager.getSecurityPolicy(),
+      networkMetrics: this.networkMonitor.getNetworkMetrics(),
+      jsExecutionStats: this.jsExecutor.getExecutionStats()
     }
   }
 
@@ -373,7 +554,12 @@ export class BrowserManager extends EventEmitter {
     await Promise.all([
       this.closeAllSessions(),
       this.cdpManager.shutdown(),
-      this.securityManager.shutdown()
+      this.securityManager.shutdown(),
+      this.pageController.shutdown(),
+      this.screenshotService.shutdown(),
+      this.networkMonitor.shutdown(),
+      this.jsExecutor.shutdown(),
+      this.stateManager.shutdown()
     ])
     
     this.isInitialized = false
