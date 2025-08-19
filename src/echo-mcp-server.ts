@@ -106,7 +106,7 @@ const BrowserExtractSchema = z.object({
 const BrowserScreenshotSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().optional().describe("CSS selector for element to screenshot"),
-  fullPage: z.boolean().optional().describe("Capture full page screenshot")
+  path: z.string().optional().describe("File path to save the screenshot")
 })
 
 const BrowserHtmlSchema = z.object({
@@ -131,9 +131,18 @@ const BrowserNetworkSchema = z.object({
 
 const BrowserStateSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
-  action: z.enum(["getCookies", "setCookie", "clearCookies", "getStorage", "setStorage", "clearStorage"]).describe("State management action"),
-  key: z.string().optional().describe("Storage key"),
-  value: z.string().optional().describe("Storage value"),
+  action: z.enum([
+    "getCookies",
+    "setCookie",
+    "deleteCookie",
+    "clearCookies",
+    "getLocalStorage",
+    "setLocalStorageItem",
+    "getSessionStorage",
+    "setSessionStorageItem"
+  ]).describe("State management action"),
+  key: z.string().optional().describe("Storage key or cookie name"),
+  value: z.string().optional().describe("Storage value or cookie value"),
   domain: z.string().optional().describe("Cookie domain")
 })
 
@@ -146,26 +155,26 @@ const BrowserInspectSchema = z.object({
 // Tool names constants
 const ToolName = {
   // Removed non-browser tool names
-  BROWSER_NAVIGATE: "browser.navigate",
-  BROWSER_BACK: "browser.back",
-  BROWSER_FORWARD: "browser.forward",
-  BROWSER_REFRESH: "browser.refresh",
-  BROWSER_CLICK: "browser.click",
-  BROWSER_FILL: "browser.fill",
-  BROWSER_SELECT: "browser.select",
-  BROWSER_WAIT: "browser.wait",
-  BROWSER_SCROLL: "browser.scroll",
-  BROWSER_EXTRACT: "browser.extract",
-  BROWSER_SCREENSHOT: "browser.screenshot",
-  BROWSER_HTML: "browser.html",
-  BROWSER_TEXT: "browser.text",
-  BROWSER_EXECUTE: "browser.execute",
-  BROWSER_NETWORK: "browser.network",
-  BROWSER_STATE: "browser.state",
-  BROWSER_INSPECT: "browser.inspect",
-  BROWSER_FIND_ELEMENT_AI: "browser.find_element_ai",
-  BROWSER_GENERATE_SELECTORS: "browser.generate_selectors",
-  BROWSER_ANALYZE_PAGE_SEMANTICS: "browser.analyze_page_semantics",
+  BROWSER_NAVIGATE: "browser_navigate",
+  BROWSER_BACK: "browser_back",
+  BROWSER_FORWARD: "browser_forward",
+  BROWSER_REFRESH: "browser_refresh",
+  BROWSER_CLICK: "browser_click",
+  BROWSER_FILL: "browser_fill",
+  BROWSER_SELECT: "browser_select",
+  BROWSER_WAIT: "browser_wait",
+  BROWSER_SCROLL: "browser_scroll",
+  BROWSER_EXTRACT: "browser_extract",
+  BROWSER_SCREENSHOT: "browser_screenshot",
+  BROWSER_HTML: "browser_html",
+  BROWSER_TEXT: "browser_text",
+  BROWSER_EXECUTE: "browser_execute",
+  BROWSER_NETWORK: "browser_network",
+  BROWSER_STATE: "browser_state",
+  BROWSER_INSPECT: "browser_inspect",
+  BROWSER_FIND_ELEMENT_AI: "browser_find_element_ai",
+  BROWSER_GENERATE_SELECTORS: "browser_generate_selectors",
+  BROWSER_ANALYZE_PAGE_SEMANTICS: "browser_analyze_page_semantics",
   // Removed project analyze
 } as const
 
@@ -269,6 +278,17 @@ class HybridMCPServer {
         await session.pageController.initialize()
         console.log(`🔧 [SESSION] Initializing browser manager for session: ${sessionId}`)
         await session.browserManager.initialize()
+        console.log(`🔧 [SESSION] Initializing network monitor for session: ${sessionId}`)
+        await session.networkMonitor.initialize()
+        console.log(`🔧 [SESSION] Initializing JS executor for session: ${sessionId}`)
+        await session.jsExecutor.initialize()
+        console.log(`🔧 [SESSION] Initializing screenshot service for session: ${sessionId}`)
+        await session.screenshotService.initialize()
+        console.log(`🔧 [SESSION] Initializing state manager for session: ${sessionId}`)
+        await session.stateManager.initialize()
+
+        console.log(`🔧 [SESSION] Creating state for session: ${sessionId}`)
+        await session.stateManager.createSession(sessionId)
         
         this.browserSessions.set(sessionId, session)
         console.log(`✅ [SESSION] Browser session created and stored: ${sessionId}`)
@@ -300,6 +320,11 @@ class HybridMCPServer {
         console.log(`🔧 [SESSION] Creating page for session: ${sessionId}`)
         await session.pageController.createPage(sessionId)
         console.log(`✅ [SESSION] Page created for session: ${sessionId}`)
+        
+        console.log(`🔧 [SESSION] Starting network monitoring for session: ${sessionId}`)
+        await session.networkMonitor.startMonitoring(sessionId)
+        console.log(`✅ [SESSION] Network monitoring started for session: ${sessionId}`)
+        
         this.logger.info(`✅ [PAGE_CREATED] Created page for session: ${sessionId}`, {
           module: 'HybridMCPServer',
           operation: 'getBrowserSession',
@@ -407,7 +432,7 @@ class HybridMCPServer {
               properties: {
                 sessionId: { type: "string", description: "Browser session identifier" },
                 description: { type: "string", description: "Natural language description" },
-                context: { type: "object", description: "Optional search context" },
+                context: { type: "object", description: "Optional search context", additionalProperties: true },
               },
               required: ["sessionId", "description"],
             },
@@ -568,6 +593,7 @@ class HybridMCPServer {
                 condition: {
                   type: "object",
                   description: "Wait condition",
+                  additionalProperties: true,
                 },
                 timeout: {
                   type: "number",
@@ -627,7 +653,7 @@ class HybridMCPServer {
           },
           {
             name: ToolName.BROWSER_SCREENSHOT,
-            description: "Capture full-page or element screenshots",
+            description: "Capture full-page or element screenshots and return base64-encoded image data with metadata",
             inputSchema: {
               type: "object",
               properties: {
@@ -639,9 +665,10 @@ class HybridMCPServer {
                   type: "string",
                   description: "CSS selector for element to screenshot",
                 },
-                fullPage: {
-                  type: "boolean",
-                  description: "Capture full page screenshot",
+
+                path: {
+                  type: "string",
+                  description: "File path to save the screenshot",
                 },
               },
               required: ["sessionId"],
@@ -696,6 +723,7 @@ class HybridMCPServer {
                 args: {
                   type: "array",
                   description: "Arguments to pass to script",
+                  items: {},
                 },
               },
               required: ["sessionId", "script"],
@@ -806,7 +834,7 @@ class HybridMCPServer {
       })
 
       try {
-        let result: string
+        let result: string | object
         console.log(`🔧 [${new Date().toISOString()}] [REQ-${requestId}] Executing tool: ${name}`)
 
         switch (name) {
@@ -952,23 +980,26 @@ class HybridMCPServer {
             throw new Error(errorMsg)
         }
 
+        // Convert object results to JSON string for consistent handling
+        const resultString = typeof result === 'object' ? JSON.stringify(result) : result
+        
         console.log(`✅ [${new Date().toISOString()}] [REQ-${requestId}] Tool execution successful: ${name}`)
-        console.log(`📊 [${new Date().toISOString()}] [REQ-${requestId}] Result length: ${result.length} characters`)
+        console.log(`📊 [${new Date().toISOString()}] [REQ-${requestId}] Result length: ${resultString.length} characters`)
         
         this.logger.info(`✅ [REQ-${requestId}] Tool execution successful: ${name}`, {
           module: 'HybridMCPServer',
           operation: 'handleToolCall',
           requestId,
           toolName: name,
-          resultLength: result.length,
-          resultPreview: result.substring(0, 200) + (result.length > 200 ? '...' : '')
+          resultLength: resultString.length,
+          resultPreview: resultString.substring(0, 200) + (resultString.length > 200 ? '...' : '')
         })
 
         return {
           content: [
             {
               type: "text",
-              text: result,
+              text: resultString,
             },
           ],
         }
@@ -1536,17 +1567,24 @@ class HybridMCPServer {
 
     try {
       const session = await this.getBrowserSession(sessionId)
-      let selector = ''
       if ('selector' in condition) {
-        selector = condition.selector
-      } else if ('text' in condition) {
-        selector = `*:contains("${condition.text}")`
-      } else {
-        throw new Error('Invalid wait condition')
+        await session.pageController.waitForElement(sessionId, condition.selector, { timeout })
+        return `Successfully waited for selector in session ${sessionId}`
       }
-      
-      await session.pageController.waitForElement(sessionId, selector, { timeout })
-      return `Successfully waited for condition in session ${sessionId}`
+      if ('text' in condition) {
+        const start = Date.now()
+        while (Date.now() - start < timeout) {
+          try {
+            const matches = await session.domInspector.searchElements(sessionId, { textContent: condition.text })
+            if (Array.isArray(matches) && matches.length > 0) {
+              return `Successfully waited for text in session ${sessionId}`
+            }
+          } catch {}
+          await new Promise(r => setTimeout(r, 100))
+        }
+        throw new Error(`Text "${condition.text}" not found within timeout`)
+      }
+      throw new Error('Invalid wait condition')
     } catch (error) {
       console.error(`❌ [${new Date().toISOString()}] Browser wait failed:`, error)
       this.logger.error(`❌ [BROWSER_WAIT] Browser wait failed`, {
@@ -1629,29 +1667,59 @@ class HybridMCPServer {
     }
   }
 
-  async browserScreenshot(args: z.infer<typeof BrowserScreenshotSchema>): Promise<string> {
+  async browserScreenshot(args: z.infer<typeof BrowserScreenshotSchema>): Promise<object> {
     const sessionId = args.sessionId
     const selector = args.selector
-    const fullPage = args.fullPage
-    this.logger.info(`📸 [BROWSER_SCREENSHOT] Taking screenshot in session ${sessionId} with selector ${selector} and fullPage=${fullPage}`, {
+    const path = args.path
+    this.logger.info(`📸 [BROWSER_SCREENSHOT] Taking screenshot in session ${sessionId} with selector ${selector}, path=${path}`, {
       module: 'HybridMCPServer',
       operation: 'browserScreenshot',
       sessionId,
       selector,
-      fullPage
+      path
     })
 
     try {
       const session = await this.getBrowserSession(sessionId)
       let screenshotResult
       
+      const options = { path, encoding: 'base64' }
+      
       if (selector) {
-        screenshotResult = await session.screenshotService.captureElementScreenshot(sessionId, selector, { fullPage })
+        screenshotResult = await session.screenshotService.captureElementScreenshot(sessionId, selector, options)
       } else {
-        screenshotResult = await session.screenshotService.captureScreenshot(sessionId, { fullPage })
+        screenshotResult = await session.screenshotService.captureScreenshot(sessionId, options)
       }
       
-      return `Successfully took screenshot in session ${sessionId}: ${screenshotResult.size} bytes`
+      // Convert binary data to base64 if it's not already encoded
+      const screenshotData = typeof screenshotResult.data === 'string' 
+        ? screenshotResult.data 
+        : screenshotResult.data.toString('base64')
+      
+      const result = {
+        success: true,
+        screenshot: screenshotData,
+        metadata: {
+          sessionId,
+          selector,
+          format: screenshotResult.format,
+          size: screenshotResult.size,
+          dimensions: screenshotResult.dimensions,
+          timestamp: screenshotResult.timestamp,
+          path: screenshotResult.path
+        }
+      }
+      
+      this.logger.info(`📸 [BROWSER_SCREENSHOT] Screenshot captured successfully`, {
+        module: 'HybridMCPServer',
+        operation: 'browserScreenshot',
+        sessionId,
+        selector,
+        size: screenshotResult.size,
+        dimensions: screenshotResult.dimensions
+      })
+      
+      return result
     } catch (error) {
       console.error(`❌ [${new Date().toISOString()}] Browser screenshot failed:`, error)
       this.logger.error(`❌ [BROWSER_SCREENSHOT] Browser screenshot failed`, {
@@ -1659,10 +1727,19 @@ class HybridMCPServer {
         operation: 'browserScreenshot',
         sessionId,
         selector,
-        fullPage,
+        path,
         error: error instanceof Error ? error : new Error(String(error))
       })
-      throw new Error(`Failed to take screenshot in session ${sessionId}: ${error}`)
+      
+      return {
+        success: false,
+        error: `Failed to take screenshot in session ${sessionId}: ${error}`,
+        metadata: {
+          sessionId,
+          selector,
+          path
+        }
+      }
     }
   }
 
@@ -1808,23 +1885,36 @@ class HybridMCPServer {
     try {
       const session = await this.getBrowserSession(sessionId)
       if (action === "getCookies") {
-        const cookies = await session.stateManager.getCookies();
+        const cookies = await session.stateManager.getCookies(sessionId, domain);
         return `Successfully retrieved ${cookies.length} cookies for session ${sessionId}: ${JSON.stringify(cookies, null, 2)}`;
       } else if (action === "setCookie") {
-        await session.stateManager.setCookie(key, value, { domain });
+        if (!key || !value) throw new Error("Cookie name and value are required")
+        await session.stateManager.setCookie(sessionId, { name: key, value, domain });
         return `Successfully set cookie for session ${sessionId} with key=${key}, value=${value}, domain=${domain}`;
+      } else if (action === "deleteCookie") {
+        if (!key) throw new Error("Cookie name is required")
+        await session.stateManager.deleteCookie(sessionId, key, domain);
+        return `Successfully deleted cookie ${key} for session ${sessionId}`;
       } else if (action === "clearCookies") {
-        await session.stateManager.clearCookies();
+        const cookies = await session.stateManager.getCookies(sessionId, domain)
+        for (const c of cookies) {
+          await session.stateManager.deleteCookie(sessionId, c.name, c.domain)
+        }
         return `Successfully cleared all cookies for session ${sessionId}`;
-      } else if (action === "getStorage") {
-        const storage = await session.stateManager.getStorage();
-        return `Successfully retrieved storage for session ${sessionId}: ${JSON.stringify(storage, null, 2)}`;
-      } else if (action === "setStorage") {
-        await session.stateManager.setStorage(key, value);
-        return `Successfully set storage for session ${sessionId} with key=${key}, value=${value}`;
-      } else if (action === "clearStorage") {
-        await session.stateManager.clearStorage();
-        return `Successfully cleared all storage for session ${sessionId}`;
+      } else if (action === "getLocalStorage") {
+        const storage = await session.stateManager.getLocalStorage(sessionId);
+        return `Successfully retrieved local storage for session ${sessionId}: ${JSON.stringify(storage, null, 2)}`;
+      } else if (action === "setLocalStorageItem") {
+        if (!key || !value) throw new Error("Key and value are required")
+        await session.stateManager.setLocalStorageItem(sessionId, key, value);
+        return `Successfully set local storage item for session ${sessionId} with key=${key}`;
+      } else if (action === "getSessionStorage") {
+        const storage = await session.stateManager.getSessionStorage(sessionId);
+        return `Successfully retrieved session storage for session ${sessionId}: ${JSON.stringify(storage, null, 2)}`;
+      } else if (action === "setSessionStorageItem") {
+        if (!key || !value) throw new Error("Key and value are required")
+        await session.stateManager.setSessionStorageItem(sessionId, key, value);
+        return `Successfully set session storage item for session ${sessionId} with key=${key}`;
       }
       return `Unknown state action: ${action}`;
     } catch (error) {
@@ -1846,15 +1936,32 @@ class HybridMCPServer {
   async inspectBrowser(url: string): Promise<string> {
     const timestamp = new Date().toISOString()
     console.log(`🌐 [${timestamp}] Browser inspection requested for: ${url}`)
-    
-    this.logger.info(`🌐 [BROWSER_INSPECT] Browser inspection requested for: ${url}`, {
-      module: 'HybridMCPServer',
-      operation: 'inspectBrowser',
-      url,
-      timestamp
-    })
-    
-    return `Browser inspection for ${url}:\n\nThis feature is available but requires browser integration module to be fully implemented.`
+    this.logger.info(`🌐 [BROWSER_INSPECT] Browser inspection requested for: ${url}`, { module: 'HybridMCPServer', operation: 'inspectBrowser', url, timestamp })
+
+    const sessionId = `inspect_${Date.now()}`
+    try {
+      const session = await this.getBrowserSession(sessionId)
+      await session.pageController.navigateToUrl(sessionId, url)
+
+      const pageInfo = await session.cdpManager.getPageInfo(sessionId)
+      const document = await session.domInspector.getDocument(sessionId)
+      const domCount = (function count(el: any): number { let n = 1; if (el.children) for (const c of el.children) n += count(c); return n })(document)
+      const security = await session.securityManager.validateContent(document.nodeValue || '')
+
+      return [
+        `Inspection for ${url}`,
+        `Title: ${pageInfo.title}`,
+        `DOM elements: ${domCount}`,
+        `Viewport: ${pageInfo.viewport.width}x${pageInfo.viewport.height}`,
+        `UA: ${pageInfo.userAgent.substring(0, 60)}...`,
+        `Security: ${JSON.stringify(security)}`
+      ].join('\n')
+    } catch (error) {
+      throw error
+    } finally {
+      try { await (this.browserSessions.get(sessionId)?.cdpManager?.closeAllConnections?.()) } catch {}
+      this.browserSessions.delete(sessionId)
+    }
   }
 
   /* async analyzeProject(projectPath: string): Promise<string> {

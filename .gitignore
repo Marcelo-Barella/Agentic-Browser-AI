@@ -120,5 +120,5 @@ agentic-ai-system-implementation.md
 # Cursor IDE specific
 .cursor/ 
 
-# Implementation documentation
-indom-implementation.md 
+# Test workspace (nuketown)
+test/

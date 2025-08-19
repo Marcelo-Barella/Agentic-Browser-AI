@@ -419,6 +419,202 @@ export class BrowserTools {
     }
   }
 
+  async intelligentScreenshot(sessionId: string, description?: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.takeIntelligentScreenshot(sessionId, description, options)
+      
+      this.logger.info('Intelligent screenshot captured', {
+        module: 'BrowserTools',
+        operation: 'intelligentScreenshot',
+        data: { 
+          sessionId, 
+          description, 
+          confidence: result.confidence,
+          region: result.analysis.region,
+          format: result.format, 
+          size: result.size 
+        }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to capture intelligent screenshot', {
+        module: 'BrowserTools',
+        operation: 'intelligentScreenshot',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, description }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async captureContentArea(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.captureContentArea(sessionId, options)
+      
+      this.logger.info('Content area screenshot captured', {
+        module: 'BrowserTools',
+        operation: 'captureContentArea',
+        data: { 
+          sessionId, 
+          confidence: result.confidence,
+          region: result.analysis.region,
+          format: result.format, 
+          size: result.size 
+        }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to capture content area screenshot', {
+        module: 'BrowserTools',
+        operation: 'captureContentArea',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async captureInteractiveElements(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.captureInteractiveElements(sessionId, options)
+      
+      this.logger.info('Interactive elements screenshot captured', {
+        module: 'BrowserTools',
+        operation: 'captureInteractiveElements',
+        data: { 
+          sessionId, 
+          confidence: result.confidence,
+          region: result.analysis.region,
+          format: result.format, 
+          size: result.size 
+        }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to capture interactive elements screenshot', {
+        module: 'BrowserTools',
+        operation: 'captureInteractiveElements',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async captureErrorStates(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.captureErrorStates(sessionId, options)
+      
+      this.logger.info('Error states screenshot captured', {
+        module: 'BrowserTools',
+        operation: 'captureErrorStates',
+        data: { 
+          sessionId, 
+          confidence: result.confidence,
+          region: result.analysis.region,
+          format: result.format, 
+          size: result.size 
+        }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to capture error states screenshot', {
+        module: 'BrowserTools',
+        operation: 'captureErrorStates',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async captureSemanticRegion(sessionId: string, region: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.captureSemanticRegion(sessionId, region, options)
+      
+      this.logger.info('Semantic region screenshot captured', {
+        module: 'BrowserTools',
+        operation: 'captureSemanticRegion',
+        data: { 
+          sessionId, 
+          region,
+          confidence: result.confidence,
+          format: result.format, 
+          size: result.size 
+        }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to capture semantic region screenshot', {
+        module: 'BrowserTools',
+        operation: 'captureSemanticRegion',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, region }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
   async extract(sessionId: string, selector: string, options: any = {}): Promise<BrowserToolResult> {
     try {
       const element = await this.browserManager.getElementInfo(sessionId, selector)
@@ -521,12 +717,13 @@ export class BrowserTools {
 
   async getHTML(sessionId: string): Promise<BrowserToolResult> {
     try {
-      const html = await this.browserManager.executeJavaScript(sessionId, 'document.documentElement.outerHTML')
+      const res = await this.browserManager.executeJavaScript(sessionId, 'document.documentElement.outerHTML')
+      const html = res?.result
       
       this.logger.info('HTML content retrieved', {
         module: 'BrowserTools',
         operation: 'getHTML',
-        data: { sessionId, htmlLength: html.length }
+        data: { sessionId, htmlLength: (html?.length || 0) }
       })
 
       return {
@@ -558,12 +755,13 @@ export class BrowserTools {
         ? `document.querySelector('${selector}')?.textContent || ''`
         : 'document.body.textContent || ""'
       
-      const text = await this.browserManager.executeJavaScript(sessionId, script)
+      const res = await this.browserManager.executeJavaScript(sessionId, script)
+      const text = res?.result || ''
       
       this.logger.info('Text content retrieved', {
         module: 'BrowserTools',
         operation: 'getText',
-        data: { sessionId, selector, textLength: text.length }
+        data: { sessionId, selector, textLength: (text?.length || 0) }
       })
 
       return {

@@ -11,6 +11,7 @@ import { ErrorHandler } from './core/error-handler.js'
 // Removed documentation generator per cleanup plan
 import { BrowserManager } from './modules/browser/browser-manager.js'
 import { TaskExecutionManager } from './modules/task-execution/index.js'
+import { TestingManager } from './modules/testing/index.js'
 import { TaskAPI } from './modules/api/task-api.js'
 import { RocketshipAdapter } from './modules/rocketship/rocketship-adapter.js'
 import { SSEServer, MCPBridge, MCPSSEServer, MCPSSEClient } from './modules/sse/index.js'
@@ -39,6 +40,7 @@ export class AgenticAISystem {
   private sseServer: SSEServer
   private mcpBridge: MCPBridge
   private mcpSSEServer: MCPSSEServer
+  private testingManager: TestingManager
   private isInitialized = false
 
   constructor() {
@@ -49,12 +51,14 @@ export class AgenticAISystem {
     
     // Initialize Phase 3 components
     this.taskExecutionManager = new TaskExecutionManager()
+    this.testingManager = new TestingManager()
     this.taskAPI = new TaskAPI()
     this.rocketshipAdapter = new RocketshipAdapter()
     
     // Initialize SSE components
+    const ssePort = Number(process.env.SSE_SERVER_PORT || process.env.MCP_SSE_BRIDGE_PORT || 3003)
     this.sseServer = new SSEServer({
-      port: 3003,
+      port: ssePort,
       corsOrigin: '*',
       maxClients: 100,
       heartbeatInterval: 30000
@@ -62,8 +66,9 @@ export class AgenticAISystem {
     this.mcpBridge = new MCPBridge(this.sseServer, this.mcpServer)
     
     // Initialize MCP SSE Server
+    const mcpSsePort = Number(process.env.MCP_SERVER_PORT || process.env.MCP_SSE_PORT || 3000)
     this.mcpSSEServer = new MCPSSEServer({
-      port: 3000,
+      port: mcpSsePort,
       corsOrigin: '*',
       serverName: 'indom-mcp-server',
       serverVersion: '1.0.0'
@@ -138,6 +143,24 @@ export class AgenticAISystem {
         })
       } catch (error) {
         getLogger().warn('⚠️ Debug: Task Execution Manager initialization failed, continuing without task execution support', {
+          module: 'AgenticAISystem',
+          operation: 'initialize',
+          error: error instanceof Error ? error : new Error(String(error))
+        })
+      }
+
+      getLogger().debug('🔧 Debug: Initializing Testing Manager...', {
+        module: 'AgenticAISystem',
+        operation: 'initialize'
+      })
+      try {
+        await this.testingManager.initialize()
+        getLogger().debug('✅ Debug: Testing Manager initialized successfully', {
+          module: 'AgenticAISystem',
+          operation: 'initialize'
+        })
+      } catch (error) {
+        getLogger().warn('⚠️ Debug: Testing Manager initialization failed, continuing without testing support', {
           module: 'AgenticAISystem',
           operation: 'initialize',
           error: error instanceof Error ? error : new Error(String(error))
@@ -526,7 +549,6 @@ export class AgenticAISystem {
         description: 'Take a screenshot of the current page',
         parameters: {
           sessionId: { type: 'string', required: true },
-          fullPage: { type: 'boolean', required: false },
           quality: { type: 'number', required: false },
           type: { type: 'string', required: false }
         },
@@ -534,7 +556,6 @@ export class AgenticAISystem {
           const screenshot = await this.browserManager.takeScreenshot(
             params['sessionId'] as string,
             {
-              fullPage: params['fullPage'] as boolean,
               quality: params['quality'] as number,
               type: params['type'] as 'png' | 'jpeg'
             }
@@ -632,6 +653,70 @@ export class AgenticAISystem {
           }
           
           return await this.taskExecutionManager.getTaskScheduler().submitTask(requirement, context)
+        }
+      })
+      // Register testing tools
+      await this._mcpServer.registerTool({
+        name: 'testing.create_test_case',
+        description: 'Create a new test case with specified parameters',
+        parameters: {
+          name: { type: 'string', required: true, description: 'Test case name' },
+          description: { type: 'string', required: true, description: 'Test case description' },
+          type: { type: 'string', enum: ['unit', 'integration', 'e2e', 'visual', 'performance'], required: true },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], required: true },
+          steps: { type: 'array', required: true, description: 'Test steps' },
+          timeout: { type: 'number', required: false },
+          retries: { type: 'number', required: false },
+          tags: { type: 'array', required: false }
+        },
+        handler: async (params: Record<string, any>) => {
+          const input = {
+            name: params['name'] as string,
+            description: params['description'] as string,
+            type: params['type'] as any,
+            priority: params['priority'] as any,
+            browserRequirements: [],
+            testSteps: params['steps'] as any[],
+            expectedResults: [],
+            timeout: (params['timeout'] as number) ?? 30000,
+            retries: (params['retries'] as number) ?? 0,
+            tags: (params['tags'] as string[]) ?? []
+          }
+          return await this.testingManager.createTestCase(input)
+        }
+      })
+
+      await this._mcpServer.registerTool({
+        name: 'testing.execute_test_suite',
+        description: 'Execute a complete test suite',
+        parameters: {
+          suiteId: { type: 'string', required: true, description: 'Test suite ID' },
+          environment: { type: 'string', required: true, description: 'Test environment' },
+          parallel: { type: 'boolean', default: false, description: 'Run tests in parallel' }
+        },
+        handler: async (params: Record<string, any>) => {
+          return await this.testingManager.executeTestSuite(
+            params['suiteId'] as string,
+            params['environment'] as string,
+            (params['parallel'] as boolean) ?? false
+          )
+        }
+      })
+
+      await this._mcpServer.registerTool({
+        name: 'testing.generate_test_report',
+        description: 'Generate comprehensive test report',
+        parameters: {
+          testRunId: { type: 'string', required: true, description: 'Test run ID' },
+          format: { type: 'string', enum: ['html', 'json', 'junit'], default: 'html' },
+          includeArtifacts: { type: 'boolean', default: true, description: 'Include test artifacts' }
+        },
+        handler: async (params: Record<string, any>) => {
+          return await this.testingManager.generateTestReport(
+            params['testRunId'] as string,
+            (params['format'] as 'html' | 'json' | 'junit') ?? 'html',
+            (params['includeArtifacts'] as boolean) ?? true
+          )
         }
       })
 

@@ -1,7 +1,7 @@
 {
   "apps": [
     {
-      "name": "hybrid-mcp-server",
+      "name": "in-dom",
       "script": "node",
       "args": "dist/echo-mcp-server.js",
       "cwd": "./",

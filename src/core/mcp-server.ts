@@ -368,7 +368,7 @@ export class MCPServer extends EventEmitter {
       description: 'Capture page or element screenshot',
       parameters: {
         sessionId: { type: 'string', required: true },
-        fullPage: { type: 'boolean', required: false },
+
         quality: { type: 'number', required: false },
         type: { type: 'string', required: false },
         path: { type: 'string', required: false }
@@ -522,6 +522,76 @@ export class MCPServer extends EventEmitter {
             script
           )
           return { x: scrollX, y: scrollY, result }
+        }
+      }
+    })
+
+    // Unified interact tool that consolidates fill, select, click, and scroll
+    await this.registerTool({
+      name: 'interact',
+      description: 'Unified tool for browser interactions: fill, select, click, and scroll',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        action: { type: 'string', required: true, enum: ['fill', 'select', 'click', 'scroll'] },
+        selector: { type: 'string', required: false },
+        value: { type: 'string', required: false },
+        x: { type: 'number', required: false },
+        y: { type: 'number', required: false },
+        timeout: { type: 'number', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const sessionId = params['sessionId'] as string
+        const action = params['action'] as string
+        const selector = params['selector'] as string
+        const value = params['value'] as string
+        const x = params['x'] as number
+        const y = params['y'] as number
+        const timeout = params['timeout'] as number
+
+        switch (action) {
+          case 'fill':
+            if (!selector || !value) {
+              throw new Error('Fill action requires both selector and value parameters')
+            }
+            await browserManager.fillElement(sessionId, selector, value, { timeout })
+            return { success: true, action: 'fill', selector, value }
+
+          case 'select':
+            if (!selector || !value) {
+              throw new Error('Select action requires both selector and value parameters')
+            }
+            await browserManager.selectOption(sessionId, selector, value, { timeout })
+            return { success: true, action: 'select', selector, value }
+
+          case 'click':
+            if (!selector) {
+              throw new Error('Click action requires selector parameter')
+            }
+            await browserManager.clickElement(sessionId, selector, { timeout })
+            return { success: true, action: 'click', selector }
+
+          case 'scroll':
+            if (selector) {
+              const script = `
+                const element = document.querySelector('${selector}');
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth' });
+                  return { scrolled: true, selector: '${selector}' };
+                }
+                return { scrolled: false, error: 'Element not found' };
+              `
+              const result = await browserManager.executeJavaScript(sessionId, script)
+              return { success: true, action: 'scroll', selector, result }
+            } else {
+              const scrollX = x || 0
+              const scrollY = y || 0
+              const script = `window.scrollTo(${scrollX}, ${scrollY}); return { x: ${scrollX}, y: ${scrollY} };`
+              const result = await browserManager.executeJavaScript(sessionId, script)
+              return { success: true, action: 'scroll', x: scrollX, y: scrollY, result }
+            }
+
+          default:
+            throw new Error(`Unknown action: ${action}. Supported actions: fill, select, click, scroll`)
         }
       }
     })

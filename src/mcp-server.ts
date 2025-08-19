@@ -514,9 +514,50 @@ class MCPServer {
               type: "string",
               description: "Browser session ID"
             },
-            fullPage: {
-              type: "boolean",
-              description: "Capture full page"
+
+            quality: {
+              type: "number",
+              description: "Image quality (1-100)"
+            },
+            type: {
+              type: "string",
+              description: "Image type: png, jpeg"
+            },
+            path: {
+              type: "string",
+              description: "Path to save screenshot"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.intelligentScreenshot",
+        description: "Take intelligent screenshot focusing on relevant content using AI",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            description: {
+              type: "string",
+              description: "Natural language description of what to capture"
+            },
+            focus: {
+              type: "string",
+              description: "Focus area: content, interactive, errors, semantic, auto",
+              enum: ["content", "interactive", "errors", "semantic", "auto"]
+            },
+            semanticRegion: {
+              type: "string",
+              description: "Semantic region to capture: header, main, footer, nav, aside, form",
+              enum: ["header", "main", "footer", "nav", "aside", "form"]
+            },
+            minConfidence: {
+              type: "number",
+              description: "Minimum confidence threshold (0-1)"
             },
             quality: {
               type: "number",
@@ -532,6 +573,131 @@ class MCPServer {
             }
           },
           required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.captureContentArea",
+        description: "Capture screenshot of main content areas",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            minConfidence: {
+              type: "number",
+              description: "Minimum confidence threshold (0-1)"
+            },
+            quality: {
+              type: "number",
+              description: "Image quality (1-100)"
+            },
+            type: {
+              type: "string",
+              description: "Image type: png, jpeg"
+            },
+            path: {
+              type: "string",
+              description: "Path to save screenshot"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.captureInteractiveElements",
+        description: "Capture screenshot of interactive elements like forms and buttons",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            minConfidence: {
+              type: "number",
+              description: "Minimum confidence threshold (0-1)"
+            },
+            quality: {
+              type: "number",
+              description: "Image quality (1-100)"
+            },
+            type: {
+              type: "string",
+              description: "Image type: png, jpeg"
+            },
+            path: {
+              type: "string",
+              description: "Path to save screenshot"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.captureErrorStates",
+        description: "Capture screenshot of error messages and problematic areas",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            minConfidence: {
+              type: "number",
+              description: "Minimum confidence threshold (0-1)"
+            },
+            quality: {
+              type: "number",
+              description: "Image quality (1-100)"
+            },
+            type: {
+              type: "string",
+              description: "Image type: png, jpeg"
+            },
+            path: {
+              type: "string",
+              description: "Path to save screenshot"
+            }
+          },
+          required: ["sessionId"]
+        }
+      },
+      {
+        name: "browser.captureSemanticRegion",
+        description: "Capture screenshot of specific semantic regions",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Browser session ID"
+            },
+            region: {
+              type: "string",
+              description: "Semantic region to capture",
+              enum: ["header", "main", "footer", "nav", "aside", "form"]
+            },
+            minConfidence: {
+              type: "number",
+              description: "Minimum confidence threshold (0-1)"
+            },
+            quality: {
+              type: "number",
+              description: "Image quality (1-100)"
+            },
+            type: {
+              type: "string",
+              description: "Image type: png, jpeg"
+            },
+            path: {
+              type: "string",
+              description: "Path to save screenshot"
+            }
+          },
+          required: ["sessionId", "region"]
         }
       },
       {
@@ -868,6 +1034,16 @@ class MCPServer {
         return await this.executeBrowserTool('wait', args)
       case 'browser.screenshot':
         return await this.executeBrowserTool('screenshot', args)
+      case 'browser.intelligentScreenshot':
+        return await this.executeBrowserTool('intelligentScreenshot', args)
+      case 'browser.captureContentArea':
+        return await this.executeBrowserTool('captureContentArea', args)
+      case 'browser.captureInteractiveElements':
+        return await this.executeBrowserTool('captureInteractiveElements', args)
+      case 'browser.captureErrorStates':
+        return await this.executeBrowserTool('captureErrorStates', args)
+      case 'browser.captureSemanticRegion':
+        return await this.executeBrowserTool('captureSemanticRegion', args)
       case 'browser.extract':
         return await this.executeBrowserTool('extract', args)
       case 'browser.execute':
@@ -1086,6 +1262,21 @@ class MCPServer {
           break
         case 'screenshot':
           result = await this.browserTools.screenshot(sessionId, args)
+          break
+        case 'intelligentScreenshot':
+          result = await this.browserTools.intelligentScreenshot(sessionId, args.description, args)
+          break
+        case 'captureContentArea':
+          result = await this.browserTools.captureContentArea(sessionId, args)
+          break
+        case 'captureInteractiveElements':
+          result = await this.browserTools.captureInteractiveElements(sessionId, args)
+          break
+        case 'captureErrorStates':
+          result = await this.browserTools.captureErrorStates(sessionId, args)
+          break
+        case 'captureSemanticRegion':
+          result = await this.browserTools.captureSemanticRegion(sessionId, args.region, args)
           break
         case 'extract':
           result = await this.browserTools.extract(sessionId, args.selector, args)

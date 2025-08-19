@@ -324,26 +324,44 @@ export class TaskPlanner {
   ): Promise<ExecutionStep[]> {
     const steps: ExecutionStep[] = []
 
-    // Browser testing step
-    if (analysis.browserRequirements.length > 0) {
-      steps.push({
-        id: `step_browser_testing_${Date.now()}`,
-        title: 'Execute Browser Tests',
-        description: 'Run browser-based tests and validations',
-        type: 'browser_testing',
-        order: 2,
-        estimatedDuration: 15,
-        dependencies: ['step_validation_1'],
-        parameters: {
-          browserRequirements: analysis.browserRequirements,
-          testType: 'automated'
-        },
-        validationRules: {
-          browserAvailable: true,
-          testEnvironment: true
-        }
-      })
-    }
+    steps.push({
+      id: `step_test_validation_${Date.now()}`,
+      title: 'Validate Test Cases',
+      description: 'Validate test case definitions and dependencies',
+      type: 'custom',
+      order: 2,
+      estimatedDuration: 3,
+      dependencies: ['step_validation_1'],
+      parameters: {
+        testCases: analysis.testCases,
+        validationType: 'comprehensive'
+      },
+      validationRules: {
+        testCaseValid: true,
+        dependenciesResolved: true
+      }
+    })
+
+    steps.push({
+      id: `step_test_execution_${Date.now()}`,
+      title: 'Execute Test Suite',
+      description: 'Run comprehensive browser automation tests',
+      type: 'browser_testing',
+      order: 3,
+      estimatedDuration: analysis.estimatedTestDuration || 30,
+      dependencies: ['step_test_validation_1'],
+      parameters: {
+        testSuite: analysis.testSuite,
+        executionMode: 'comprehensive',
+        includeVisual: true,
+        includePerformance: true
+      },
+      validationRules: {
+        browserAvailable: true,
+        testEnvironment: true,
+        parallelExecution: true
+      }
+    })
 
     return steps
   }

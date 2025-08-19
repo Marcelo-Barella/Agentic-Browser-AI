@@ -5,9 +5,9 @@ import { CDPConnectionManager } from './cdp-connection-manager.js'
 import { DOMInspector } from './dom-inspector.js'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
+import sharp from 'sharp'
 
 export interface ScreenshotOptions {
-  fullPage?: boolean
   quality?: number
   type?: 'png' | 'jpeg'
   path?: string
@@ -19,6 +19,10 @@ export interface ScreenshotOptions {
   }
   omitBackground?: boolean
   encoding?: 'binary' | 'base64'
+  maxWidth?: number
+  maxHeight?: number
+  maxFileSize?: number // Maximum file size in bytes
+  compress?: boolean
 }
 
 export interface ScreenshotResult {
@@ -113,7 +117,6 @@ export class ScreenshotService extends EventEmitter {
       }
 
       const screenshotOptions: any = {
-        fullPage: options.fullPage || false,
         type: options.type || 'png',
         omitBackground: options.omitBackground || false,
         encoding: options.encoding || 'binary'
@@ -131,16 +134,22 @@ export class ScreenshotService extends EventEmitter {
       const screenshot = await connection.page.screenshot(screenshotOptions)
       const captureTime = Date.now() - startTime
 
+      // Ensure screenshot is a Buffer
+      const screenshotBuffer = typeof screenshot === 'string' ? Buffer.from(screenshot, 'base64') : screenshot
+
+      // Process the screenshot with compression and resizing
+      const processedScreenshot = await this.processScreenshot(screenshotBuffer, options)
+
       const result: ScreenshotResult = {
-        data: screenshot,
+        data: processedScreenshot,
         format: options.type || 'png',
-        size: screenshot.length,
+        size: processedScreenshot.length,
         dimensions: await this.getScreenshotDimensions(sessionId, options),
         timestamp: new Date()
       }
 
       if (options.path) {
-        const filePath = await this.saveScreenshot(Buffer.from(screenshot), options.path, options.type || 'png')
+        const filePath = await this.saveScreenshot(processedScreenshot, options.path, options.type || 'png')
         result.path = filePath
       }
 
@@ -331,6 +340,71 @@ export class ScreenshotService extends EventEmitter {
     }
   }
 
+  private async processScreenshot(screenshot: Buffer, options: ScreenshotOptions): Promise<Buffer> {
+    try {
+      let processedImage = sharp(screenshot)
+
+      // Set aggressive default settings for AI processing
+      const defaultMaxWidth = options.maxWidth || 800
+      const defaultMaxHeight = options.maxHeight || 600
+      const defaultQuality = options.quality || 60
+      const defaultMaxFileSize = options.maxFileSize || 50 * 1024 // 50KB default
+
+      // Always resize to reasonable dimensions for AI processing
+      const resizeOptions = {
+        width: defaultMaxWidth,
+        height: defaultMaxHeight,
+        fit: 'inside' as const,
+        withoutEnlargement: true
+      }
+      processedImage = processedImage.resize(resizeOptions)
+
+      // Apply aggressive compression (default to JPEG for better compression)
+      if (options.compress !== false) {
+        const format = options.type || 'jpeg'
+        const quality = defaultQuality
+
+        if (format === 'jpeg') {
+          processedImage = processedImage.jpeg({ quality })
+        } else if (format === 'png') {
+          // Convert PNG to JPEG for better compression
+          processedImage = processedImage.jpeg({ quality })
+        }
+      }
+
+      // Apply progressive quality reduction if maxFileSize is specified
+      if (options.maxFileSize) {
+        let result = await processedImage.toBuffer()
+        let currentQuality = defaultQuality
+
+        while (result.length > options.maxFileSize && currentQuality > 10) {
+          currentQuality -= 10
+          const format = options.type || 'jpeg'
+          
+          if (format === 'jpeg' || (format === 'png' && currentQuality < 100)) {
+            result = await sharp(screenshot)
+              .resize(defaultMaxWidth, defaultMaxHeight, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: currentQuality })
+              .toBuffer()
+          } else {
+            break
+          }
+        }
+
+        return result
+      }
+
+      return await processedImage.toBuffer()
+    } catch (error) {
+      this.logger.warn('Failed to process screenshot, returning original', {
+        module: 'ScreenshotService',
+        operation: 'processScreenshot',
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return screenshot
+    }
+  }
+
   private async ensureOutputDirectory(): Promise<void> {
     try {
       if (!existsSync(this.outputDirectory)) {
@@ -349,13 +423,23 @@ export class ScreenshotService extends EventEmitter {
 
   private async saveScreenshot(data: Buffer, filename: string, format: string): Promise<string> {
     try {
-      const filePath = join(this.outputDirectory, filename)
-      writeFileSync(filePath, data)
+      // Ensure filename has proper extension
+      let filePath = join(this.outputDirectory, filename)
+      if (!filename.includes('.')) {
+        const extension = format === 'jpeg' ? '.jpg' : '.png'
+        filePath = join(this.outputDirectory, `${filename}${extension}`)
+      }
+
+      // Ensure data is a proper Buffer
+      const bufferData = Buffer.isBuffer(data) ? data : Buffer.from(data)
+      
+      // Write file synchronously to ensure it's complete
+      writeFileSync(filePath, bufferData)
       
       this.logger.info('Screenshot saved to file', {
         module: 'ScreenshotService',
         operation: 'saveScreenshot',
-        data: { filePath, size: data.length }
+        data: { filePath, size: bufferData.length, format }
       })
       
       return filePath
@@ -411,7 +495,7 @@ export class ScreenshotService extends EventEmitter {
       if (viewport) {
         return {
           width: viewport.width,
-          height: options.fullPage ? await this.getFullPageHeight(sessionId) : viewport.height
+          height: viewport.height
         }
       }
 
@@ -426,31 +510,7 @@ export class ScreenshotService extends EventEmitter {
     }
   }
 
-  private async getFullPageHeight(sessionId: string): Promise<number> {
-    try {
-      const connection = await this.cdpManager.getConnection(sessionId)
-      if (!connection) {
-        return 1080
-      }
 
-      return await connection.page.evaluate(() => {
-        return Math.max(
-          (globalThis as any).document?.body?.scrollHeight || 0,
-          (globalThis as any).document?.body?.offsetHeight || 0,
-          (globalThis as any).document?.documentElement?.clientHeight || 0,
-          (globalThis as any).document?.documentElement?.scrollHeight || 0,
-          (globalThis as any).document?.documentElement?.offsetHeight || 0
-        )
-      })
-    } catch (error) {
-      this.logger.warn('Failed to get full page height', {
-        module: 'ScreenshotService',
-        operation: 'getFullPageHeight',
-        error: error instanceof Error ? error : new Error(String(error))
-      })
-      return 1080
-    }
-  }
 
   private async getPDFPageCount(pdfBuffer: Buffer): Promise<number> {
     try {
@@ -556,5 +616,559 @@ export class ScreenshotService extends EventEmitter {
   async shutdown(): Promise<void> {
     this.isInitialized = false
     this.emit('shutdown')
+  }
+
+  // Intelligent Screenshot Methods
+  async captureIntelligentScreenshot(sessionId: string, description?: string, options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
+    if (!this.isInitialized) {
+      throw new Error('Screenshot Service not initialized')
+    }
+
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        throw new Error('Connection not found')
+      }
+
+      // Analyze page content to determine the best capture strategy
+      const pageAnalysis = await this.analyzePageContent(sessionId, description)
+      
+      // Apply intelligent options based on analysis
+      const intelligentOptions: ScreenshotOptions = {
+        ...options,
+        ...(pageAnalysis.targetRegion && { clip: pageAnalysis.targetRegion })
+      }
+
+      this.logger.info('Intelligent screenshot analysis completed', {
+        module: 'ScreenshotService',
+        operation: 'captureIntelligentScreenshot',
+        data: {
+          sessionId,
+          description,
+          analysis: pageAnalysis,
+          options: intelligentOptions
+        }
+      })
+
+      return await this.captureScreenshot(sessionId, intelligentOptions)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          module: 'ScreenshotService',
+          operation: 'captureIntelligentScreenshot',
+          sessionId,
+          parameters: { description, options }
+        },
+        'medium'
+      )
+      throw error
+    }
+  }
+
+  async captureContentArea(sessionId: string, options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
+    if (!this.isInitialized) {
+      throw new Error('Screenshot Service not initialized')
+    }
+
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        throw new Error('Connection not found')
+      }
+
+      // Find the main content area
+      const contentArea = await this.findMainContentArea(sessionId)
+      
+      const contentOptions: ScreenshotOptions = {
+        ...options,
+        ...(contentArea && { clip: contentArea })
+      }
+
+      this.logger.info('Content area identified', {
+        module: 'ScreenshotService',
+        operation: 'captureContentArea',
+        data: {
+          sessionId,
+          contentArea,
+          options: contentOptions
+        }
+      })
+
+      return await this.captureScreenshot(sessionId, contentOptions)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          module: 'ScreenshotService',
+          operation: 'captureContentArea',
+          sessionId,
+          parameters: { options }
+        },
+        'medium'
+      )
+      throw error
+    }
+  }
+
+  async captureInteractiveElements(sessionId: string, options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
+    if (!this.isInitialized) {
+      throw new Error('Screenshot Service not initialized')
+    }
+
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        throw new Error('Connection not found')
+      }
+
+      // Find interactive elements
+      const interactiveElements = await this.findInteractiveElements(sessionId)
+      
+      if (interactiveElements.length === 0) {
+        this.logger.warn('No interactive elements found', {
+          module: 'ScreenshotService',
+          operation: 'captureInteractiveElements',
+          data: { sessionId }
+        })
+        return await this.captureScreenshot(sessionId, options)
+      }
+
+      // Capture the area containing interactive elements
+      const interactiveArea = this.calculateBoundingBox(interactiveElements)
+      
+      const interactiveOptions: ScreenshotOptions = {
+        ...options,
+        clip: interactiveArea
+      }
+
+      this.logger.info('Interactive elements captured', {
+        module: 'ScreenshotService',
+        operation: 'captureInteractiveElements',
+        data: {
+          sessionId,
+          elementCount: interactiveElements.length,
+          interactiveArea,
+          options: interactiveOptions
+        }
+      })
+
+      return await this.captureScreenshot(sessionId, interactiveOptions)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          module: 'ScreenshotService',
+          operation: 'captureInteractiveElements',
+          sessionId,
+          parameters: { options }
+        },
+        'medium'
+      )
+      throw error
+    }
+  }
+
+  async captureErrorStates(sessionId: string, options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
+    if (!this.isInitialized) {
+      throw new Error('Screenshot Service not initialized')
+    }
+
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        throw new Error('Connection not found')
+      }
+
+      // Find error states and elements
+      const errorElements = await this.findErrorStates(sessionId)
+      
+      if (errorElements.length === 0) {
+        this.logger.info('No error states found', {
+          module: 'ScreenshotService',
+          operation: 'captureErrorStates',
+          data: { sessionId }
+        })
+        return await this.captureScreenshot(sessionId, options)
+      }
+
+      // Capture the area containing error states
+      const errorArea = this.calculateBoundingBox(errorElements)
+      
+      const errorOptions: ScreenshotOptions = {
+        ...options,
+        clip: errorArea
+      }
+
+      this.logger.info('Error states captured', {
+        module: 'ScreenshotService',
+        operation: 'captureErrorStates',
+        data: {
+          sessionId,
+          errorCount: errorElements.length,
+          errorArea,
+          options: errorOptions
+        }
+      })
+
+      return await this.captureScreenshot(sessionId, errorOptions)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          module: 'ScreenshotService',
+          operation: 'captureErrorStates',
+          sessionId,
+          parameters: { options }
+        },
+        'medium'
+      )
+      throw error
+    }
+  }
+
+  async captureSemanticRegion(sessionId: string, region: string, options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
+    if (!this.isInitialized) {
+      throw new Error('Screenshot Service not initialized')
+    }
+
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        throw new Error('Connection not found')
+      }
+
+      // Find semantic region based on description
+      const semanticRegion = await this.findSemanticRegion(sessionId, region)
+      
+      if (!semanticRegion) {
+        this.logger.warn('Semantic region not found', {
+          module: 'ScreenshotService',
+          operation: 'captureSemanticRegion',
+          data: { sessionId, region }
+        })
+        return await this.captureScreenshot(sessionId, options)
+      }
+
+      const semanticOptions: ScreenshotOptions = {
+        ...options,
+        clip: semanticRegion
+      }
+
+      this.logger.info('Semantic region captured', {
+        module: 'ScreenshotService',
+        operation: 'captureSemanticRegion',
+        data: {
+          sessionId,
+          region,
+          semanticRegion,
+          options: semanticOptions
+        }
+      })
+
+      return await this.captureScreenshot(sessionId, semanticOptions)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          module: 'ScreenshotService',
+          operation: 'captureSemanticRegion',
+          sessionId,
+          parameters: { region, options }
+        },
+        'medium'
+      )
+      throw error
+    }
+  }
+
+  // Private helper methods for intelligent screenshot functionality
+  private async analyzePageContent(sessionId: string, description?: string): Promise<{
+    targetRegion?: { x: number; y: number; width: number; height: number }
+  }> {
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        return {}
+      }
+
+      const analysis = await connection.page.evaluate((desc) => {
+        const body = (globalThis as any).document?.body
+        if (!body) {
+          return {}
+        }
+
+        const scrollHeight = body.scrollHeight || 0
+        const clientHeight = body.clientHeight || 0
+        const hasSignificantContent = scrollHeight > clientHeight * 1.5
+
+        // Analyze content based on description if provided
+        let targetRegion = undefined
+        if (desc) {
+          const elements = (globalThis as any).document?.querySelectorAll('*')
+          for (const element of elements || []) {
+            const text = element.textContent || ''
+            if (text.toLowerCase().includes(desc.toLowerCase())) {
+              const rect = element.getBoundingClientRect()
+              targetRegion = {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+              }
+              break
+            }
+          }
+        }
+
+        return {
+          ...(targetRegion && { targetRegion })
+        }
+      }, description)
+
+      return analysis
+    } catch (error) {
+      this.logger.warn('Failed to analyze page content', {
+        module: 'ScreenshotService',
+        operation: 'analyzePageContent',
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return {}
+    }
+  }
+
+  private async findMainContentArea(sessionId: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        return null
+      }
+
+      const contentArea = await connection.page.evaluate(() => {
+        // Try common content selectors
+        const selectors = [
+          'main',
+          '[role="main"]',
+          '.content',
+          '.main-content',
+          '#content',
+          '#main',
+          '.container',
+          'article'
+        ]
+
+        for (const selector of selectors) {
+          const element = (globalThis as any).document?.querySelector(selector)
+          if (element) {
+            const rect = element.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) {
+              return {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+              }
+            }
+          }
+        }
+
+        // Fallback to body if no content area found
+        const body = (globalThis as any).document?.body
+        if (body) {
+          const rect = body.getBoundingClientRect()
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height
+          }
+        }
+
+        return null
+      })
+
+      return contentArea
+    } catch (error) {
+      this.logger.warn('Failed to find main content area', {
+        module: 'ScreenshotService',
+        operation: 'findMainContentArea',
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return null
+    }
+  }
+
+  private async findInteractiveElements(sessionId: string): Promise<Array<{ x: number; y: number; width: number; height: number }>> {
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        return []
+      }
+
+      const interactiveElements = await connection.page.evaluate(() => {
+        const interactiveSelectors = [
+          'button',
+          'input',
+          'select',
+          'textarea',
+          'a[href]',
+          '[onclick]',
+          '[role="button"]',
+          '[tabindex]'
+        ]
+
+        const elements: Array<{ x: number; y: number; width: number; height: number }> = []
+        
+        for (const selector of interactiveSelectors) {
+          const foundElements = (globalThis as any).document?.querySelectorAll(selector) || []
+          for (const element of foundElements) {
+            const rect = element.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) {
+              elements.push({
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+              })
+            }
+          }
+        }
+
+        return elements
+      })
+
+      return interactiveElements
+    } catch (error) {
+      this.logger.warn('Failed to find interactive elements', {
+        module: 'ScreenshotService',
+        operation: 'findInteractiveElements',
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return []
+    }
+  }
+
+  private async findErrorStates(sessionId: string): Promise<Array<{ x: number; y: number; width: number; height: number }>> {
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        return []
+      }
+
+      const errorElements = await connection.page.evaluate(() => {
+        const errorSelectors = [
+          '.error',
+          '.alert',
+          '.alert-danger',
+          '.alert-error',
+          '[data-error]',
+          '[aria-invalid="true"]',
+          '.invalid',
+          '.failed'
+        ]
+
+        const elements: Array<{ x: number; y: number; width: number; height: number }> = []
+        
+        for (const selector of errorSelectors) {
+          const foundElements = (globalThis as any).document?.querySelectorAll(selector) || []
+          for (const element of foundElements) {
+            const rect = element.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) {
+              elements.push({
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+              })
+            }
+          }
+        }
+
+        return elements
+      })
+
+      return errorElements
+    } catch (error) {
+      this.logger.warn('Failed to find error states', {
+        module: 'ScreenshotService',
+        operation: 'findErrorStates',
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return []
+    }
+  }
+
+  private async findSemanticRegion(sessionId: string, region: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        return null
+      }
+
+      const semanticRegion = await connection.page.evaluate((regionDesc) => {
+        const elements = (globalThis as any).document?.querySelectorAll('*')
+        
+        for (const element of elements || []) {
+          const text = element.textContent || ''
+          const className = element.className || ''
+          const id = element.id || ''
+          const role = element.getAttribute('role') || ''
+          
+          const searchText = regionDesc.toLowerCase()
+          if (
+            text.toLowerCase().includes(searchText) ||
+            className.toLowerCase().includes(searchText) ||
+            id.toLowerCase().includes(searchText) ||
+            role.toLowerCase().includes(searchText)
+          ) {
+            const rect = element.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) {
+              return {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+              }
+            }
+          }
+        }
+
+        return null
+      }, region)
+
+      return semanticRegion
+    } catch (error) {
+      this.logger.warn('Failed to find semantic region', {
+        module: 'ScreenshotService',
+        operation: 'findSemanticRegion',
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return null
+    }
+  }
+
+  private calculateBoundingBox(elements: Array<{ x: number; y: number; width: number; height: number }>): { x: number; y: number; width: number; height: number } {
+    if (elements.length === 0) {
+      return { x: 0, y: 0, width: 1920, height: 1080 }
+    }
+
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+
+    for (const element of elements) {
+      minX = Math.min(minX, element.x)
+      minY = Math.min(minY, element.y)
+      maxX = Math.max(maxX, element.x + element.width)
+      maxY = Math.max(maxY, element.y + element.height)
+    }
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    }
   }
 }

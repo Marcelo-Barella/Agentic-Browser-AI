@@ -14,6 +14,7 @@ export interface CDPConnectionOptions {
   args?: string[]
   timeout?: number
   maxConnections?: number
+  executablePath?: string
 }
 
 export interface CDPRequest {
@@ -45,13 +46,12 @@ export class CDPConnectionManager extends EventEmitter {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
         '--no-first-run',
-        '--no-zygote',
         '--disable-gpu'
       ],
       timeout: 30000,
       maxConnections: 5,
+      executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
       ...options
     }
     this.maxConnections = this.options.maxConnections!
@@ -70,6 +70,9 @@ export class CDPConnectionManager extends EventEmitter {
       }
       if (this.options.args) {
         testOptions.args = this.options.args
+      }
+      if (this.options.executablePath) {
+        testOptions.executablePath = this.options.executablePath
       }
       
       const testBrowser = await puppeteer.launch(testOptions)
@@ -93,6 +96,7 @@ export class CDPConnectionManager extends EventEmitter {
 
     try {
       console.log(`🔧 [CDP] Creating connection for session: ${sessionId}`)
+      console.log(`🔧 [CDP] Current connections count: ${this.connections.size}`)
       
       const browserOptions: any = {}
       if (this.options.headless !== undefined) {
@@ -101,6 +105,9 @@ export class CDPConnectionManager extends EventEmitter {
       if (this.options.args) {
         browserOptions.args = this.options.args
       }
+      if (this.options.executablePath) {
+        browserOptions.executablePath = this.options.executablePath
+      }
       
       console.log(`🔧 [CDP] Launching browser with options:`, browserOptions)
       const browser = await puppeteer.launch(browserOptions)
@@ -108,6 +115,9 @@ export class CDPConnectionManager extends EventEmitter {
 
       const page = await browser.newPage()
       console.log(`✅ [CDP] Page created for session: ${sessionId}`)
+      
+      await page.setViewport({ width: 1920, height: 1080 })
+      console.log(`✅ [CDP] Viewport set to 1920x1080 for session: ${sessionId}`)
       
       const cdpSession = await page.target().createCDPSession()
       console.log(`✅ [CDP] CDP session created for session: ${sessionId}`)
@@ -121,6 +131,9 @@ export class CDPConnectionManager extends EventEmitter {
       }
 
       this.connections.set(sessionId, connection)
+      console.log(`🔧 [CDP] Connection stored in map for session: ${sessionId}`)
+      console.log(`🔧 [CDP] Connections count after storing: ${this.connections.size}`)
+      
       this.emit('connectionCreated', sessionId)
       
       console.log(`✅ [CDP] Connection created successfully for session: ${sessionId}`)
@@ -133,11 +146,17 @@ export class CDPConnectionManager extends EventEmitter {
   }
 
   async getConnection(sessionId: string): Promise<CDPConnection | null> {
+    console.log(`🔧 [CDP] Getting connection for session: ${sessionId}`)
+    console.log(`🔧 [CDP] Available connections: ${Array.from(this.connections.keys()).join(', ')}`)
+    
     const connection = this.connections.get(sessionId)
     if (connection && connection.isActive) {
       connection.lastActivity = new Date()
+      console.log(`✅ [CDP] Connection found and active for session: ${sessionId}`)
       return connection
     }
+    
+    console.log(`❌ [CDP] Connection not found or inactive for session: ${sessionId}`)
     return null
   }
 

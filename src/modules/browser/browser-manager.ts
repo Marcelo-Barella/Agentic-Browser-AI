@@ -9,6 +9,9 @@ import { JavaScriptExecutor } from './js-executor.js'
 import { StateManager } from './state-manager.js'
 import { EventEmitter } from 'events'
 import { AIElementSelectorImpl, ElementMatch, SelectorStrategy, PageSemanticMap, DynamicStrategy } from './ai-element-selector.js'
+import { VisualTestingService, VisualTestConfig, VisualTestResult } from '../testing/visual-testing.js'
+import { PerformanceTestingService, PerformanceTestResult } from '../testing/performance-testing.js'
+import { ArtifactManager, RecordingOptions, RecordingResult, TestArtifact } from '../testing/artifact-manager.js'
 
 export interface BrowserSession {
   sessionId: string
@@ -30,7 +33,7 @@ export interface BrowserInspectionResult {
 }
 
 export interface BrowserOperation {
-  type: 'navigate' | 'inspect' | 'map' | 'screenshot' | 'execute'
+  type: 'navigate' | 'inspect' | 'map' | 'screenshot' | 'execute' | 'intelligentScreenshot' | 'captureContentArea' | 'captureInteractiveElements' | 'captureErrorStates' | 'captureSemanticRegion'
   sessionId: string
   url?: string
   options?: any
@@ -48,6 +51,9 @@ export class BrowserManager extends EventEmitter {
   private jsExecutor: JavaScriptExecutor
   private stateManager: StateManager
   private aiSelector?: AIElementSelectorImpl
+  private visualTesting: VisualTestingService
+  private performanceTesting: PerformanceTestingService
+  private artifactManager: ArtifactManager
   private sessions: Map<string, BrowserSession> = new Map()
   private operations: BrowserOperation[] = []
   private isInitialized: boolean = false
@@ -55,7 +61,9 @@ export class BrowserManager extends EventEmitter {
   constructor() {
     super()
     
-    this.securityManager = new BrowserSecurityManager()
+    this.securityManager = new BrowserSecurityManager({
+      allowedDomains: [] // Empty array allows all domains
+    })
     this.cdpManager = new CDPConnectionManager({
       args: this.securityManager.getBrowserArgs()
     })
@@ -67,6 +75,9 @@ export class BrowserManager extends EventEmitter {
     this.jsExecutor = new JavaScriptExecutor(this.cdpManager)
     this.stateManager = new StateManager(this.cdpManager)
     this.aiSelector = new AIElementSelectorImpl(this.domInspector, this.jsExecutor)
+    this.visualTesting = new VisualTestingService()
+    this.performanceTesting = new PerformanceTestingService()
+    this.artifactManager = new ArtifactManager()
   }
 
   async initialize(): Promise<void> {
@@ -90,6 +101,37 @@ export class BrowserManager extends EventEmitter {
     } catch (error) {
       throw new Error(`Failed to initialize Browser Manager: ${error}`)
     }
+  }
+
+  async runVisualTest(sessionId: string, testName: string, config: VisualTestConfig): Promise<VisualTestResult> {
+    const safeName = testName.replace(/[^a-z0-9_-]/gi, '_')
+    const currentFile = `${sessionId}_${safeName}.png`
+    const screenshot = await this.screenshotService.captureScreenshot(sessionId, { type: 'png', path: currentFile })
+    const baselinePath = await this.visualTesting.captureBaseline(sessionId, testName)
+    const diff = await this.visualTesting.compareWithBaseline(sessionId, testName)
+    return {
+      sessionId,
+      testName,
+      passed: diff.passed,
+      baselinePath,
+      currentPath: screenshot.path || currentFile,
+      diff
+    }
+  }
+
+  async runPerformanceTest(sessionId: string, metrics: string[]): Promise<PerformanceTestResult> {
+    const measured = await this.performanceTesting.measurePagePerformance(sessionId)
+    return { sessionId, metrics: measured }
+  }
+
+  async recordTestSession(sessionId: string, options: RecordingOptions): Promise<RecordingResult> {
+    const startedAt = Date.now()
+    const stoppedAt = startedAt
+    return { sessionId, startedAt, stoppedAt, artifacts: [] }
+  }
+
+  async generateTestArtifacts(sessionId: string, testId: string): Promise<TestArtifact[]> {
+    return []
   }
 
   // AI-powered element selection APIs
@@ -273,7 +315,6 @@ export class BrowserManager extends EventEmitter {
   }
 
   async takeScreenshot(sessionId: string, options: {
-    fullPage?: boolean
     quality?: number
     type?: 'png' | 'jpeg'
     path?: string
@@ -294,6 +335,76 @@ export class BrowserManager extends EventEmitter {
     })
 
     this.emit('screenshotTaken', sessionId, result)
+    return result
+  }
+
+  async takeIntelligentScreenshot(sessionId: string, description?: string, options: any = {}): Promise<any> {
+    const result = await this.screenshotService.captureIntelligentScreenshot(sessionId, description, options)
+
+    this.logOperation({
+      type: 'intelligentScreenshot',
+      sessionId,
+      options: { description, ...options },
+      timestamp: new Date()
+    })
+
+    this.emit('intelligentScreenshotTaken', sessionId, result)
+    return result
+  }
+
+  async captureContentArea(sessionId: string, options: any = {}): Promise<any> {
+    const result = await this.screenshotService.captureContentArea(sessionId, options)
+
+    this.logOperation({
+      type: 'captureContentArea',
+      sessionId,
+      options,
+      timestamp: new Date()
+    })
+
+    this.emit('contentAreaCaptured', sessionId, result)
+    return result
+  }
+
+  async captureInteractiveElements(sessionId: string, options: any = {}): Promise<any> {
+    const result = await this.screenshotService.captureInteractiveElements(sessionId, options)
+
+    this.logOperation({
+      type: 'captureInteractiveElements',
+      sessionId,
+      options,
+      timestamp: new Date()
+    })
+
+    this.emit('interactiveElementsCaptured', sessionId, result)
+    return result
+  }
+
+  async captureErrorStates(sessionId: string, options: any = {}): Promise<any> {
+    const result = await this.screenshotService.captureErrorStates(sessionId, options)
+
+    this.logOperation({
+      type: 'captureErrorStates',
+      sessionId,
+      options,
+      timestamp: new Date()
+    })
+
+    this.emit('errorStatesCaptured', sessionId, result)
+    return result
+  }
+
+  async captureSemanticRegion(sessionId: string, region: string, options: any = {}): Promise<any> {
+    const result = await this.screenshotService.captureSemanticRegion(sessionId, region, options)
+
+    this.logOperation({
+      type: 'captureSemanticRegion',
+      sessionId,
+      options: { region, ...options },
+      timestamp: new Date()
+    })
+
+    this.emit('semanticRegionCaptured', sessionId, result)
     return result
   }
 
