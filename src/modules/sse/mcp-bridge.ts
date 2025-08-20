@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { MCPServer } from '../../core/mcp-server.js'
+import { MCPServer } from '../../core/mcp-server'
 import { SSEServer, SSEEvent } from './sse-server.js'
 
 /**

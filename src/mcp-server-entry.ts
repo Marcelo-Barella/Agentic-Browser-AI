@@ -392,6 +392,28 @@ class MCPServer {
   }
 
   /**
+   * Utility function to automatically inject headless parameter to browser tools
+   * Browser tools are identified by having a sessionId parameter
+   */
+  private injectHeadlessParameter(properties: Record<string, any>): Record<string, any> {
+    // Check if this is a browser tool by looking for sessionId parameter
+    const isBrowserTool = Object.keys(properties).some(key => key === 'sessionId')
+    
+    if (isBrowserTool && !properties.hasOwnProperty('headless')) {
+      return {
+        ...properties,
+        headless: { 
+          type: 'boolean', 
+          description: 'Run browser in headless mode (default: true)',
+          default: true
+        }
+      }
+    }
+    
+    return properties
+  }
+
+  /**
    * Convert tool parameters to JSON schema format
    */
   private convertParametersToSchema(parameters: Record<string, any>): Record<string, any> {
@@ -406,7 +428,8 @@ class MCPServer {
       }
     }
     
-    return schema
+    // Inject headless parameter for browser tools
+    return this.injectHeadlessParameter(schema)
   }
 
   /**

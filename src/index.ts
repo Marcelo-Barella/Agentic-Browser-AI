@@ -5,7 +5,7 @@
  * Coordinates all modules and provides the main interface for the system
  */
 
-import { MCPServer } from './core/mcp-server.js'
+import { MCPServer } from './core/mcp-server'
 // Removed non-browser modules per cleanup plan
 import { ErrorHandler } from './core/error-handler.js'
 // Removed documentation generator per cleanup plan
@@ -16,6 +16,36 @@ import { TaskAPI } from './modules/api/task-api.js'
 import { RocketshipAdapter } from './modules/rocketship/rocketship-adapter.js'
 import { SSEServer, MCPBridge, MCPSSEServer, MCPSSEClient } from './modules/sse/index.js'
 import { getLogger } from './core/logger.js'
+import { convertHeadlessParameter } from './modules/browser/browser-utils.js'
+
+/**
+ * Utility function to automatically inject headless parameter to browser tools
+ * Browser tools are identified by having a sessionId parameter
+ */
+function injectHeadlessParameter(parameters: Record<string, any>): Record<string, any> {
+  // Check if this is a browser tool by looking for sessionId parameter
+  const isBrowserTool = Object.keys(parameters).some(key => key === 'sessionId')
+  
+  if (isBrowserTool && !parameters.hasOwnProperty('headless')) {
+    return {
+      ...parameters,
+      headless: { type: 'boolean', required: false }
+    }
+  }
+  
+  return parameters
+}
+
+/**
+ * Enhanced registerTool method that automatically injects headless parameter for browser tools
+ */
+async function registerBrowserTool(mcpServer: MCPServer, tool: any): Promise<void> {
+  const enhancedTool = {
+    ...tool,
+    parameters: injectHeadlessParameter(tool.parameters)
+  }
+  await mcpServer.registerTool(enhancedTool)
+}
 
 export class AgenticAISystem {
   private _mcpServer: MCPServer
@@ -457,7 +487,7 @@ export class AgenticAISystem {
       // Removed non-browser tools registration (project.analyze, filesystem.*, system.info, mcp.status)
 
       // Register browser session creation tool
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.createSession',
         description: 'Create a new browser session',
         parameters: {
@@ -465,15 +495,27 @@ export class AgenticAISystem {
           url: { type: 'string', required: false }
         },
         handler: async (params: Record<string, any>) => {
+          // Use the consistent convertHeadlessParameter function
+          const headless = convertHeadlessParameter(params['headless'])
+          
+          console.log(`🔧 [Tool] browser.createSession called with:`, {
+            sessionId: params['sessionId'],
+            url: params['url'],
+            rawHeadless: params['headless'],
+            convertedHeadless: headless,
+            type: typeof headless
+          })
+          
           return await this.browserManager.createSession(
             params['sessionId'] as string,
-            params['url'] as string
+            params['url'] as string,
+            { headless }
           )
         }
       })
 
       // Register browser navigation tool
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.navigate',
         description: 'Navigate to a URL in a browser session',
         parameters: {
@@ -481,16 +523,28 @@ export class AgenticAISystem {
           url: { type: 'string', required: true }
         },
         handler: async (params: Record<string, any>) => {
+          // Use the consistent convertHeadlessParameter function
+          const headless = convertHeadlessParameter(params['headless'])
+          
+          console.log(`🔧 [Tool] browser.navigate called with:`, {
+            sessionId: params['sessionId'],
+            url: params['url'],
+            rawHeadless: params['headless'],
+            convertedHeadless: headless,
+            type: typeof headless
+          })
+          
           await this.browserManager.navigateToUrl(
             params['sessionId'] as string,
-            params['url'] as string
+            params['url'] as string,
+            { headless }
           )
           return { success: true }
         }
       })
 
       // Register page inspection tool
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.inspectPage',
         description: 'Inspect a page and map Vue components',
         parameters: {
@@ -514,7 +568,7 @@ export class AgenticAISystem {
       })
 
       // Register Vue component mapping tool
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.mapVueComponents',
         description: 'Map Vue components in a browser session',
         parameters: {
@@ -544,7 +598,7 @@ export class AgenticAISystem {
       })
 
       // Register screenshot tool
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.screenshot',
         description: 'Take a screenshot of the current page',
         parameters: {
@@ -565,7 +619,7 @@ export class AgenticAISystem {
       })
 
       // Register JavaScript execution tool
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.executeScript',
         description: 'Execute JavaScript in the browser',
         parameters: {
@@ -597,7 +651,7 @@ export class AgenticAISystem {
       })
 
       // Register session management tools
-      await this._mcpServer.registerTool({
+      await registerBrowserTool(this._mcpServer, {
         name: 'browser.closeSession',
         description: 'Close a browser session',
         parameters: {

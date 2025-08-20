@@ -163,7 +163,7 @@ export class PageController extends EventEmitter {
       pageState.isLoaded = true
       pageState.isLoading = false
       pageState.loadTime = loadTime
-      pageState.viewport = pageInfo.viewport
+      pageState.viewport = { width: 1920, height: 1080 } // Default viewport since getPageInfo doesn't return viewport
       
       this.addToHistory(sessionId, url)
       

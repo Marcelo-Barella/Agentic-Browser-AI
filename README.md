@@ -10,7 +10,6 @@ A comprehensive Model Context Protocol (MCP) server implementation with Server-S
 - **Smart Screenshot Service**: Intelligent capture with semantic region analysis and image processing
 - **Comprehensive Testing Framework**: Test case validation, execution planning, and CI/CD integration
 - **Browser Management**: Refactored browser management with enhanced security and performance
-- **Filesystem Operations**: Secure file reading, writing, and directory operations
 - **Project Analysis**: Comprehensive project structure analysis with dependency tracking
 - **Error Handling**: Robust error handling with recovery mechanisms and detailed logging
 - **Performance Monitoring**: Real-time performance metrics and optimization insights
@@ -108,6 +107,7 @@ npm run sse
 ## 🔧 Available Tools
 
 ### Browser Integration & DOM Management
+- `browser.createSession` - Create a new browser session with headless option (default: true)
 - `browser.inspect` - Advanced web application inspection with semantic analysis
 - `browser.navigate` - Intelligent navigation with state management
 - `browser.screenshot` - Smart screenshot capture with semantic region analysis
@@ -129,11 +129,6 @@ npm run sse
 - `testing.visual` - Visual regression testing
 - `testing.performance` - Performance benchmarking and monitoring
 
-### Filesystem Operations
-- `filesystem.read` - Secure file content reading
-- `filesystem.write` - Safe file writing with validation
-- `filesystem.list` - Directory listing with metadata
-
 ### System Information
 - `system.info` - Comprehensive system information
 - `mcp.status` - MCP server status and health monitoring
@@ -143,6 +138,22 @@ npm run sse
 - `project.dependencies` - Dependency tracking and analysis
 
 ## 📊 Usage Examples
+
+### Browser Session Management
+```javascript
+// Create a headless browser session (default)
+const headlessSession = await mcp.call('browser.createSession', {
+  sessionId: 'headless-session',
+  url: 'https://example.com'
+});
+
+// Create a visible browser session for debugging
+const visibleSession = await mcp.call('browser.createSession', {
+  sessionId: 'visible-session',
+  url: 'https://example.com',
+  headless: false  // Show browser window
+});
+```
 
 ### Advanced Screenshot Capture
 ```javascript
@@ -314,6 +325,7 @@ await this.mcpServer.registerTool({
 - `prettier`: Code formatting
 
 ## 🤝 Contributing
+> Feel free to contribute to the project, I would be happy to review and merge your changes.
 
 1. Fork the repository
 2. Create a feature branch
@@ -333,6 +345,13 @@ For support and questions:
 - Check the comprehensive documentation
 - Review the system status reports
 - Consult the testing framework documentation
+
+## 🔮 The future of InDOM
+
+In the future, InDOM will have a full new version that does not use Puppeteer. This new version will be a full rewrite of the project and will be a lot more powerful and flexible.
+I plan on lowering the number of tools to a minimum, and focus on the core features of the project.
+
+The MCP is not published on smithery yet, but I plan on publishing it on smithery in the future.
 
 ---
 

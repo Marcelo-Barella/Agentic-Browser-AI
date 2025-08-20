@@ -27,9 +27,9 @@ export class BrowserTools {
     })
   }
 
-  async createSession(sessionId: string, url?: string): Promise<BrowserToolResult> {
+  async createSession(sessionId: string, url?: string, options?: { headless?: boolean | "new" }): Promise<BrowserToolResult> {
     try {
-      await this.browserManager.createSession(sessionId, url)
+      await this.browserManager.createSession(sessionId, url, options)
       this.activeSessions.add(sessionId)
       
       this.logger.info('Browser session created', {
@@ -650,12 +650,23 @@ export class BrowserTools {
 
   async execute(sessionId: string, script: string, options: any = {}): Promise<BrowserToolResult> {
     try {
+      // Validate session state before execution
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        return {
+          success: false,
+          error: 'Session state is invalid or connection is unhealthy',
+          sessionId,
+          timestamp: new Date()
+        }
+      }
+
       const result = await this.browserManager.executeJavaScript(sessionId, script, options)
       
-      this.logger.info('Script executed', {
+      this.logger.info('Script executed successfully', {
         module: 'BrowserTools',
         operation: 'execute',
-        data: { sessionId, scriptLength: script.length }
+        data: { sessionId, scriptLength: script.length, hasResult: !!result }
       })
 
       return {
@@ -789,23 +800,36 @@ export class BrowserTools {
 
   async network(sessionId: string, action: string): Promise<BrowserToolResult> {
     try {
+      // Validate session state before network operations
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        return {
+          success: false,
+          error: 'Session state is invalid or connection is unhealthy',
+          sessionId,
+          timestamp: new Date()
+        }
+      }
+
       let result: any
       
       switch (action) {
         case 'start':
-          result = await this.browserManager.getNetworkMetrics(sessionId)
+          await this.browserManager.networkMonitorPublic.startMonitoring(sessionId)
+          result = { message: 'Network monitoring started successfully' }
           break
         case 'stop':
-          result = { message: 'Network monitoring stopped' }
+          await this.browserManager.networkMonitorPublic.stopMonitoring(sessionId)
+          result = { message: 'Network monitoring stopped successfully' }
           break
         case 'get':
-          result = await this.browserManager.getNetworkMetrics(sessionId)
+          result = await this.browserManager.networkMonitorPublic.getNetworkMetrics()
           break
         default:
           throw new Error(`Unknown network action: ${action}`)
       }
       
-      this.logger.info('Network operation completed', {
+      this.logger.info('Network operation completed successfully', {
         module: 'BrowserTools',
         operation: 'network',
         data: { sessionId, action }
@@ -836,41 +860,66 @@ export class BrowserTools {
 
   async state(sessionId: string, action: string, key?: string, value?: string, domain?: string): Promise<BrowserToolResult> {
     try {
+      // Validate session state before state operations
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        return {
+          success: false,
+          error: 'Session state is invalid or connection is unhealthy',
+          sessionId,
+          timestamp: new Date()
+        }
+      }
+
       let result: any
       
       switch (action) {
         case 'getCookies':
-          result = await this.browserManager.getCookies(sessionId, domain)
+          result = await this.browserManager.stateManagerPublic.getCookies(sessionId, domain)
           break
         case 'setCookie':
           if (!key || !value) {
             throw new Error('Cookie name and value are required')
           }
-          await this.browserManager.setCookie(sessionId, { name: key, value, domain })
+          const cookieData: any = { name: key, value }
+          if (domain) {
+            cookieData.domain = domain
+          }
+          await this.browserManager.stateManagerPublic.setCookie(sessionId, cookieData)
           result = { message: 'Cookie set successfully' }
           break
         case 'deleteCookie':
           if (!key) {
             throw new Error('Cookie name is required')
           }
-          await this.browserManager.deleteCookie(sessionId, key, domain)
+          await this.browserManager.stateManagerPublic.deleteCookie(sessionId, key, domain)
           result = { message: 'Cookie deleted successfully' }
           break
         case 'getLocalStorage':
-          result = await this.browserManager.getLocalStorage(sessionId)
+          result = await this.browserManager.stateManagerPublic.getLocalStorage(sessionId)
           break
         case 'setLocalStorageItem':
           if (!key || !value) {
             throw new Error('Key and value are required')
           }
-          await this.browserManager.setLocalStorageItem(sessionId, key, value)
+          await this.browserManager.stateManagerPublic.setLocalStorageItem(sessionId, key, value)
           result = { message: 'Local storage item set successfully' }
+          break
+        case 'getSessionStorage':
+          result = await this.browserManager.stateManagerPublic.getSessionStorage(sessionId)
+          break
+        case 'setSessionStorageItem':
+          if (!key || !value) {
+            throw new Error('Key and value are required')
+          }
+          await this.browserManager.stateManagerPublic.setSessionStorageItem(sessionId, key, value)
+          result = { message: 'Session storage item set successfully' }
           break
         default:
           throw new Error(`Unknown state action: ${action}`)
       }
       
-      this.logger.info('State operation completed', {
+      this.logger.info('State operation completed successfully', {
         module: 'BrowserTools',
         operation: 'state',
         data: { sessionId, action, key }
@@ -950,5 +999,52 @@ export class BrowserTools {
       await this.closeSession(sessionId)
     }
     await this.browserManager.shutdown()
+  }
+
+  private async validateSessionState(sessionId: string): Promise<boolean> {
+    try {
+      // Check if session exists in active sessions
+      if (!this.activeSessions.has(sessionId)) {
+        this.logger.warn('Session validation failed - session not in active sessions', {
+          module: 'BrowserTools',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      // Validate connection health
+      const isConnectionValid = await this.browserManager.cdpManagerPublic.validateConnection(sessionId)
+      if (!isConnectionValid) {
+        this.logger.warn('Session validation failed - connection is unhealthy', {
+          module: 'BrowserTools',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      // Get connection health status
+      const connectionHealth = this.browserManager.cdpManagerPublic.getConnectionHealth(sessionId)
+      if (!connectionHealth || !connectionHealth.isHealthy) {
+        this.logger.warn('Session validation failed - connection health is poor', {
+          module: 'BrowserTools',
+          operation: 'validateSessionState',
+          sessionId,
+          health: connectionHealth
+        })
+        return false
+      }
+
+      return true
+    } catch (error) {
+      this.logger.error('Session validation error', {
+        module: 'BrowserTools',
+        operation: 'validateSessionState',
+        sessionId,
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return false
+    }
   }
 }

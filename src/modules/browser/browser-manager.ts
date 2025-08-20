@@ -12,6 +12,7 @@ import { AIElementSelectorImpl, ElementMatch, SelectorStrategy, PageSemanticMap,
 import { VisualTestingService, VisualTestConfig, VisualTestResult } from '../testing/visual-testing.js'
 import { PerformanceTestingService, PerformanceTestResult } from '../testing/performance-testing.js'
 import { ArtifactManager, RecordingOptions, RecordingResult, TestArtifact } from '../testing/artifact-manager.js'
+import { convertHeadlessParameter } from './browser-utils.js'
 
 export interface BrowserSession {
   sessionId: string
@@ -167,7 +168,7 @@ export class BrowserManager extends EventEmitter {
     return this.aiSelector.handleDynamicElements(sessionId, el)
   }
 
-  async createSession(sessionId: string, url?: string): Promise<BrowserSession> {
+  async createSession(sessionId: string, url?: string, options?: { headless?: boolean | "new" }): Promise<BrowserSession> {
     if (!this.isInitialized) {
       throw new Error('Browser Manager not initialized')
     }
@@ -180,8 +181,19 @@ export class BrowserManager extends EventEmitter {
       }
     }
 
-    // Create CDP connection
-    await this.cdpManager.createConnection(sessionId)
+    // Create CDP connection with headless option
+    const headless = convertHeadlessParameter(options?.headless)
+    console.log(`🔧 [BrowserManager] Creating session with headless:`, {
+      sessionId,
+      url,
+      optionsHeadless: options?.headless,
+      finalHeadless: headless,
+      type: typeof headless,
+      isHeadless: headless === true || headless === "new",
+      isVisible: headless === false
+    })
+    
+    await this.cdpManager.createConnection(sessionId, { headless })
 
     // Initialize all managers for this session
     await Promise.all([
@@ -205,7 +217,7 @@ export class BrowserManager extends EventEmitter {
     return session
   }
 
-  async navigateToUrl(sessionId: string, url: string): Promise<void> {
+  async navigateToUrl(sessionId: string, url: string, options?: { headless?: boolean | "new" }): Promise<void> {
     // Validate URL
     const validation = await this.securityManager.validateUrl(url)
     if (!validation.isValid) {
@@ -215,6 +227,12 @@ export class BrowserManager extends EventEmitter {
     // Check if URL is blocked
     if (this.securityManager.isUrlBlocked(url)) {
       throw new Error('URL is blocked by security policy')
+    }
+
+    // Check if session exists, if not create it with headless option
+    if (!this.sessions.has(sessionId)) {
+      await this.createSession(sessionId, url, options)
+      return
     }
 
     // Navigate using Page Controller
@@ -489,16 +507,21 @@ export class BrowserManager extends EventEmitter {
     return await this.screenshotService.captureVisualAnalysis(sessionId, selector)
   }
 
-  async getNetworkMetrics(sessionId: string): Promise<any> {
-    return this.networkMonitor.getNetworkMetrics()
+  // Public access methods for managers
+  get cdpManagerPublic() {
+    return this.cdpManager
   }
 
-  async getSecurityThreats(sessionId: string): Promise<any> {
-    return this.networkMonitor.getSecurityThreats()
+  get networkMonitorPublic() {
+    return this.networkMonitor
   }
 
-  async executeFunction(sessionId: string, functionBody: string, args: any[] = [], options: any = {}): Promise<any> {
-    return await this.jsExecutor.executeFunction(sessionId, functionBody, args, options)
+  get stateManagerPublic() {
+    return this.stateManager
+  }
+
+  get jsExecutorPublic() {
+    return this.jsExecutor
   }
 
   async injectScript(sessionId: string, script: string, options: any = {}): Promise<any> {

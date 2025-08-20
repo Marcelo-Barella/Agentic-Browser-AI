@@ -135,10 +135,19 @@ export class StateManager extends EventEmitter {
 
   async getCookies(sessionId: string, domain?: string): Promise<Cookie[]> {
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
+
+      // Validate browser storage API accessibility
+      await this.validateStorageAPIAccessibility(sessionId, 'cookies')
 
       const cookies = await connection.page.cookies(domain || '')
       
@@ -148,7 +157,7 @@ export class StateManager extends EventEmitter {
         session.lastActivity = new Date()
       }
 
-      this.logger.debug('Cookies retrieved', {
+      this.logger.debug('Cookies retrieved successfully', {
         module: 'StateManager',
         operation: 'getCookies',
         data: { sessionId, domain, cookieCount: cookies.length }
@@ -172,10 +181,19 @@ export class StateManager extends EventEmitter {
 
   async setCookie(sessionId: string, cookie: Cookie): Promise<void> {
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
+
+      // Validate browser storage API accessibility
+      await this.validateStorageAPIAccessibility(sessionId, 'cookies')
 
       await connection.page.setCookie(cookie)
       
@@ -251,35 +269,34 @@ export class StateManager extends EventEmitter {
 
   async getLocalStorage(sessionId: string): Promise<StorageItem[]> {
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
 
+      // Validate browser storage API accessibility
+      await this.validateStorageAPIAccessibility(sessionId, 'localStorage')
+
       const items = await connection.page.evaluate(() => {
-        try {
-          const storage: StorageItem[] = []
-          const localStorage = (globalThis as any).localStorage
-          
-          if (!localStorage) {
-            return []
+        const storage: StorageItem[] = []
+        for (let i = 0; i < (globalThis as any).localStorage?.length || 0; i++) {
+          const key = (globalThis as any).localStorage?.key(i)
+          if (key) {
+            const value = (globalThis as any).localStorage?.getItem(key) || ''
+            storage.push({
+              key,
+              value,
+              timestamp: new Date()
+            })
           }
-          
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i)
-            if (key) {
-              storage.push({
-                key,
-                value: localStorage.getItem(key) || '',
-                timestamp: new Date()
-              })
-            }
-          }
-          return storage
-        } catch (error) {
-          // Return empty array if localStorage access is denied
-          return []
         }
+        return storage
       })
 
       const session = this.sessions.get(sessionId)
@@ -288,7 +305,7 @@ export class StateManager extends EventEmitter {
         session.lastActivity = new Date()
       }
 
-      this.logger.debug('Local storage retrieved', {
+      this.logger.debug('Local storage retrieved successfully', {
         module: 'StateManager',
         operation: 'getLocalStorage',
         data: { sessionId, itemCount: items.length }
@@ -311,20 +328,22 @@ export class StateManager extends EventEmitter {
 
   async setLocalStorageItem(sessionId: string, key: string, value: string): Promise<void> {
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
 
+      // Validate browser storage API accessibility
+      await this.validateStorageAPIAccessibility(sessionId, 'localStorage')
+
       await connection.page.evaluate((key, value) => {
-        try {
-          const localStorage = (globalThis as any).localStorage
-          if (localStorage) {
-            localStorage.setItem(key, value)
-          }
-        } catch (error) {
-          // Ignore localStorage access errors
-        }
+        (globalThis as any).localStorage?.setItem(key, value)
       }, key, value)
 
       const session = this.sessions.get(sessionId)
@@ -340,7 +359,7 @@ export class StateManager extends EventEmitter {
         session.lastActivity = new Date()
       }
 
-      this.logger.info('Local storage item set', {
+      this.logger.info('Local storage item set successfully', {
         module: 'StateManager',
         operation: 'setLocalStorageItem',
         data: { sessionId, key, valueLength: value.length }
@@ -364,19 +383,29 @@ export class StateManager extends EventEmitter {
 
   async getSessionStorage(sessionId: string): Promise<StorageItem[]> {
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
+
+      // Validate browser storage API accessibility
+      await this.validateStorageAPIAccessibility(sessionId, 'sessionStorage')
 
       const items = await connection.page.evaluate(() => {
         const storage: StorageItem[] = []
         for (let i = 0; i < (globalThis as any).sessionStorage?.length || 0; i++) {
           const key = (globalThis as any).sessionStorage?.key(i)
           if (key) {
+            const value = (globalThis as any).sessionStorage?.getItem(key) || ''
             storage.push({
               key,
-              value: (globalThis as any).sessionStorage?.getItem(key) || '',
+              value,
               timestamp: new Date()
             })
           }
@@ -390,7 +419,7 @@ export class StateManager extends EventEmitter {
         session.lastActivity = new Date()
       }
 
-      this.logger.debug('Session storage retrieved', {
+      this.logger.debug('Session storage retrieved successfully', {
         module: 'StateManager',
         operation: 'getSessionStorage',
         data: { sessionId, itemCount: items.length }
@@ -413,10 +442,19 @@ export class StateManager extends EventEmitter {
 
   async setSessionStorageItem(sessionId: string, key: string, value: string): Promise<void> {
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
+
+      // Validate browser storage API accessibility
+      await this.validateStorageAPIAccessibility(sessionId, 'sessionStorage')
 
       await connection.page.evaluate((key, value) => {
         (globalThis as any).sessionStorage?.setItem(key, value)
@@ -435,7 +473,7 @@ export class StateManager extends EventEmitter {
         session.lastActivity = new Date()
       }
 
-      this.logger.info('Session storage item set', {
+      this.logger.info('Session storage item set successfully', {
         module: 'StateManager',
         operation: 'setSessionStorageItem',
         data: { sessionId, key, valueLength: value.length }
@@ -624,5 +662,86 @@ export class StateManager extends EventEmitter {
     this.sessionStates.clear()
     this.isInitialized = false
     this.emit('shutdown')
+  }
+
+  private async validateSessionState(sessionId: string): Promise<boolean> {
+    try {
+      // Check if connection is healthy
+      const isConnectionValid = await this.cdpManager.validateConnection(sessionId)
+      if (!isConnectionValid) {
+        this.logger.warn('Session validation failed - connection is unhealthy', {
+          module: 'StateManager',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      // Additional session state validation
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection || !connection.isActive) {
+        this.logger.warn('Session validation failed - connection is inactive', {
+          module: 'StateManager',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      return true
+    } catch (error) {
+      this.logger.error('Session validation error', {
+        module: 'StateManager',
+        operation: 'validateSessionState',
+        sessionId,
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return false
+    }
+  }
+
+  private async validateStorageAPIAccessibility(sessionId: string, storageType: 'cookies' | 'localStorage' | 'sessionStorage'): Promise<void> {
+    try {
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection) {
+        throw new Error('Connection not found')
+      }
+
+      // Test storage API accessibility
+      const isAccessible = await connection.page.evaluate((type) => {
+        try {
+          switch (type) {
+            case 'cookies':
+              return typeof (globalThis as any).document?.cookie !== 'undefined'
+            case 'localStorage':
+              return typeof (globalThis as any).localStorage !== 'undefined'
+            case 'sessionStorage':
+              return typeof (globalThis as any).sessionStorage !== 'undefined'
+            default:
+              return false
+          }
+        } catch {
+          return false
+        }
+      }, storageType)
+
+      if (!isAccessible) {
+        throw new Error(`${storageType} API is not accessible in this context`)
+      }
+
+      this.logger.debug('Storage API accessibility validated', {
+        module: 'StateManager',
+        operation: 'validateStorageAPIAccessibility',
+        data: { sessionId, storageType, isAccessible }
+      })
+    } catch (error) {
+      this.logger.error('Storage API accessibility validation failed', {
+        module: 'StateManager',
+        operation: 'validateStorageAPIAccessibility',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, storageType }
+      })
+      throw error
+    }
   }
 }

@@ -48,6 +48,41 @@ interface MCPNotification {
   params?: Record<string, any>
 }
 
+/**
+ * Utility function to automatically inject headless parameter to browser tools
+ * Browser tools are identified by having a sessionId parameter
+ */
+function injectHeadlessParameter(properties: Record<string, any>): Record<string, any> {
+  // Check if this is a browser tool by looking for sessionId parameter
+  const isBrowserTool = Object.keys(properties).some(key => key === 'sessionId')
+  
+  if (isBrowserTool && !properties.hasOwnProperty('headless')) {
+    return {
+      ...properties,
+      headless: { 
+        type: 'boolean', 
+        description: 'Run browser in headless mode (default: true)',
+        default: true
+      }
+    }
+  }
+  
+  return properties
+}
+
+/**
+ * Utility function to create a browser tool schema with automatic headless parameter injection
+ */
+function createBrowserToolSchema(toolSchema: any): any {
+  return {
+    ...toolSchema,
+    inputSchema: {
+      ...toolSchema.inputSchema,
+      properties: injectHeadlessParameter(toolSchema.inputSchema.properties)
+    }
+  }
+}
+
 class MCPServer {
   private rl: readline.Interface
   private isInitialized: boolean = false
@@ -342,7 +377,7 @@ class MCPServer {
     
     // Pre-define browser-only tools with AI selectors
     const tools = [
-      {
+      createBrowserToolSchema({
         name: "browser.navigate",
         description: "Navigate to URL with options",
         inputSchema: {
@@ -367,8 +402,8 @@ class MCPServer {
           },
           required: ["sessionId", "url"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.find_element_ai",
         description: "Find element using AI-powered natural language description",
         inputSchema: {
@@ -380,8 +415,8 @@ class MCPServer {
           },
           required: ["sessionId", "description"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.generate_selectors",
         description: "Generate multiple robust selectors for an element",
         inputSchema: {
@@ -392,8 +427,8 @@ class MCPServer {
           },
           required: ["sessionId", "elementSelector"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.analyze_page_semantics",
         description: "Analyze page structure and element relationships",
         inputSchema: {
@@ -403,8 +438,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.click",
         description: "Click element by selector",
         inputSchema: {
@@ -429,8 +464,8 @@ class MCPServer {
           },
           required: ["sessionId", "selector"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.fill",
         description: "Fill form element with value",
         inputSchema: {
@@ -455,8 +490,8 @@ class MCPServer {
           },
           required: ["sessionId", "selector", "value"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.select",
         description: "Select option from dropdown",
         inputSchema: {
@@ -477,8 +512,8 @@ class MCPServer {
           },
           required: ["sessionId", "selector", "value"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.wait",
         description: "Wait for element or condition",
         inputSchema: {
@@ -503,8 +538,8 @@ class MCPServer {
           },
           required: ["sessionId", "selector"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.screenshot",
         description: "Capture page or element screenshot",
         inputSchema: {
@@ -530,8 +565,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.intelligentScreenshot",
         description: "Take intelligent screenshot focusing on relevant content using AI",
         inputSchema: {
@@ -574,8 +609,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.captureContentArea",
         description: "Capture screenshot of main content areas",
         inputSchema: {
@@ -604,8 +639,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.captureInteractiveElements",
         description: "Capture screenshot of interactive elements like forms and buttons",
         inputSchema: {
@@ -634,8 +669,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.captureErrorStates",
         description: "Capture screenshot of error messages and problematic areas",
         inputSchema: {
@@ -664,8 +699,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.captureSemanticRegion",
         description: "Capture screenshot of specific semantic regions",
         inputSchema: {
@@ -699,8 +734,8 @@ class MCPServer {
           },
           required: ["sessionId", "region"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.extract",
         description: "Extract content from specific elements",
         inputSchema: {
@@ -721,8 +756,8 @@ class MCPServer {
           },
           required: ["sessionId", "selector"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.execute",
         description: "Execute JavaScript code",
         inputSchema: {
@@ -747,8 +782,8 @@ class MCPServer {
           },
           required: ["sessionId", "script"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.back",
         description: "Navigate back in history",
         inputSchema: {
@@ -761,8 +796,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.forward",
         description: "Navigate forward in history",
         inputSchema: {
@@ -775,8 +810,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.refresh",
         description: "Refresh current page",
         inputSchema: {
@@ -789,8 +824,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.html",
         description: "Get page HTML content",
         inputSchema: {
@@ -807,8 +842,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.text",
         description: "Extract text content from page",
         inputSchema: {
@@ -825,8 +860,8 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.inspect",
         description: "Inspect browser page and get detailed information",
         inputSchema: {
@@ -839,8 +874,8 @@ class MCPServer {
           },
           required: ["url"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.network",
         description: "Monitor network requests and responses",
         inputSchema: {
@@ -857,8 +892,8 @@ class MCPServer {
           },
           required: ["sessionId", "action"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.state",
         description: "Manage cookies and browser storage",
         inputSchema: {
@@ -887,8 +922,8 @@ class MCPServer {
           },
           required: ["sessionId", "action"]
         }
-      },
-      {
+      }),
+      createBrowserToolSchema({
         name: "browser.scroll",
         description: "Scroll page or specific elements",
         inputSchema: {
@@ -913,7 +948,7 @@ class MCPServer {
           },
           required: ["sessionId"]
         }
-      }
+      })
     ]
     
     const response: MCPResponse = {
@@ -1059,7 +1094,10 @@ class MCPServer {
       case 'browser.text':
         return await this.executeBrowserTool('getText', args)
       case 'browser.inspect':
-        return await this.executeBrowserInspect(args.url)
+        const headless = args.headless === 'false' ? false : 
+                        args.headless === 'true' ? true : 
+                        args.headless !== undefined ? Boolean(args.headless) : true
+        return await this.executeBrowserInspect(args.url, headless)
       case 'browser.find_element_ai':
         return await this.executeBrowserTool('findElementAI', args)
       case 'browser.generate_selectors':
@@ -1228,6 +1266,11 @@ class MCPServer {
     try {
       const sessionId = args.sessionId || `session_${Date.now()}`
       
+      // Extract headless parameter and convert to boolean
+      const headless = args.headless === 'false' ? false : 
+                      args.headless === 'true' ? true : 
+                      args.headless !== undefined ? Boolean(args.headless) : true
+      
       // Ensure browser tools are initialized
       if (!this.browserTools.isReady()) {
         await this.browserTools.initialize()
@@ -1236,7 +1279,7 @@ class MCPServer {
       // Create session if it doesn't exist
       const activeSessions = this.browserTools.getActiveSessions()
       if (!activeSessions.includes(sessionId)) {
-        const createResult = await this.browserTools.createSession(sessionId)
+        const createResult = await this.browserTools.createSession(sessionId, undefined, { headless })
         if (!createResult.success) {
           throw new Error(`Failed to create browser session: ${createResult.error}`)
         }
@@ -1340,7 +1383,7 @@ class MCPServer {
   /**
    * Execute browser inspection
    */
-  async executeBrowserInspect(url: string): Promise<string> {
+  async executeBrowserInspect(url: string, headless: boolean = true): Promise<string> {
     try {
       const sessionId = `inspect_${Date.now()}`
       
@@ -1350,7 +1393,7 @@ class MCPServer {
       }
       
       // Create session and navigate
-      const createResult = await this.browserTools.createSession(sessionId, url)
+      const createResult = await this.browserTools.createSession(sessionId, url, { headless })
       if (!createResult.success) {
         throw new Error(`Failed to create browser session: ${createResult.error}`)
       }

@@ -42,6 +42,34 @@ export interface MCPSession {
   isActive: boolean
 }
 
+/**
+ * Utility function to automatically inject headless parameter to browser tools
+ * Browser tools are identified by having a sessionId parameter
+ */
+function injectHeadlessParameter(parameters: Record<string, any>): Record<string, any> {
+  // Check if this is a browser tool by looking for sessionId parameter
+  const isBrowserTool = Object.keys(parameters).some(key => key === 'sessionId')
+  
+  if (isBrowserTool && !parameters.hasOwnProperty('headless')) {
+    return {
+      ...parameters,
+      headless: { type: 'boolean', required: false }
+    }
+  }
+  
+  return parameters
+}
+
+/**
+ * Utility function to create a browser tool with automatic headless parameter injection
+ */
+function createBrowserTool(tool: Omit<MCPTool, 'parameters'> & { parameters: Record<string, any> }): MCPTool {
+  return {
+    ...tool,
+    parameters: injectHeadlessParameter(tool.parameters)
+  }
+}
+
 export class MCPServer extends EventEmitter {
   private tools: Map<string, MCPTool> = new Map()
   private sessions: Map<string, MCPSession> = new Map()
@@ -254,40 +282,54 @@ export class MCPServer extends EventEmitter {
     console.log('🔧 Debug: Registering browser tools...')
     
     // Register browser session management tools
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.createSession',
       description: 'Create a new browser session',
       parameters: {
         sessionId: { type: 'string', required: true },
-        url: { type: 'string', required: false }
+        url: { type: 'string', required: false },
+        headless: { type: 'boolean', required: false }
       },
       handler: async (params: Record<string, any>) => {
+        // Convert headless parameter properly from string to boolean
+        const headless = params['headless'] === 'false' ? false : 
+                        params['headless'] === 'true' ? true : 
+                        params['headless'] !== undefined ? Boolean(params['headless']) : true
+        
         return await browserManager.createSession(
           params['sessionId'] as string,
-          params['url'] as string
+          params['url'] as string,
+          { headless }
         )
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.navigate',
       description: 'Navigate to URL in browser session',
       parameters: {
         sessionId: { type: 'string', required: true },
         url: { type: 'string', required: true },
         timeout: { type: 'number', required: false },
-        waitUntil: { type: 'string', required: false }
+        waitUntil: { type: 'string', required: false },
+        headless: { type: 'boolean', required: false }
       },
       handler: async (params: Record<string, any>) => {
+        // Convert headless parameter properly from string to boolean
+        const headless = params['headless'] === 'false' ? false : 
+                        params['headless'] === 'true' ? true : 
+                        params['headless'] !== undefined ? Boolean(params['headless']) : true
+        
         await browserManager.navigateToUrl(
           params['sessionId'] as string,
-          params['url'] as string
+          params['url'] as string,
+          { headless }
         )
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.click',
       description: 'Click element by selector',
       parameters: {
@@ -303,9 +345,9 @@ export class MCPServer extends EventEmitter {
         )
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.fill',
       description: 'Fill form element with value',
       parameters: {
@@ -323,9 +365,9 @@ export class MCPServer extends EventEmitter {
         )
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.select',
       description: 'Select option from dropdown',
       parameters: {
@@ -342,9 +384,9 @@ export class MCPServer extends EventEmitter {
         )
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.wait',
       description: 'Wait for element or condition',
       parameters: {
@@ -361,9 +403,9 @@ export class MCPServer extends EventEmitter {
         )
         return { element }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.screenshot',
       description: 'Capture page or element screenshot',
       parameters: {
@@ -380,9 +422,9 @@ export class MCPServer extends EventEmitter {
         )
         return result
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.extract',
       description: 'Extract content from specific elements',
       parameters: {
@@ -397,9 +439,9 @@ export class MCPServer extends EventEmitter {
         )
         return { element }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.execute',
       description: 'Execute JavaScript code',
       parameters: {
@@ -415,9 +457,9 @@ export class MCPServer extends EventEmitter {
         )
         return { result }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.back',
       description: 'Navigate back in history',
       parameters: {
@@ -427,9 +469,9 @@ export class MCPServer extends EventEmitter {
         await browserManager.goBack(params['sessionId'] as string)
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.forward',
       description: 'Navigate forward in history',
       parameters: {
@@ -439,9 +481,9 @@ export class MCPServer extends EventEmitter {
         await browserManager.goForward(params['sessionId'] as string)
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.refresh',
       description: 'Refresh current page',
       parameters: {
@@ -452,9 +494,9 @@ export class MCPServer extends EventEmitter {
         await browserManager.refresh(params['sessionId'] as string)
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.html',
       description: 'Get page HTML content',
       parameters: {
@@ -467,9 +509,9 @@ export class MCPServer extends EventEmitter {
         )
         return { html }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.text',
       description: 'Extract text content from page',
       parameters: {
@@ -487,9 +529,9 @@ export class MCPServer extends EventEmitter {
         )
         return { text, selector: params['selector'] }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.scroll',
       description: 'Scroll page or specific elements',
       parameters: {
@@ -524,10 +566,10 @@ export class MCPServer extends EventEmitter {
           return { x: scrollX, y: scrollY, result }
         }
       }
-    })
+    }))
 
     // Unified interact tool that consolidates fill, select, click, and scroll
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'interact',
       description: 'Unified tool for browser interactions: fill, select, click, and scroll',
       parameters: {
@@ -594,9 +636,9 @@ export class MCPServer extends EventEmitter {
             throw new Error(`Unknown action: ${action}. Supported actions: fill, select, click, scroll`)
         }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.network',
       description: 'Monitor network requests and responses',
       parameters: {
@@ -621,9 +663,9 @@ export class MCPServer extends EventEmitter {
         
         return { action, result }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.state',
       description: 'Manage cookies and browser storage',
       parameters: {
@@ -676,9 +718,9 @@ export class MCPServer extends EventEmitter {
         
         return { action, result }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.inspect',
       description: 'Inspect browser page and get detailed information',
       parameters: {
@@ -707,9 +749,9 @@ export class MCPServer extends EventEmitter {
           timestamp: new Date().toISOString()
         }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.closeSession',
       description: 'Close a browser session',
       parameters: {
@@ -719,19 +761,19 @@ export class MCPServer extends EventEmitter {
         await browserManager.closeSession(params['sessionId'] as string)
         return { success: true }
       }
-    })
+    }))
 
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.getSessions',
       description: 'Get all browser sessions',
       parameters: {},
       handler: async () => {
         return browserManager.getAllSessions()
       }
-    })
+    }))
 
     // AI-powered element finding
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.find_element_ai',
       description: 'Find element using AI-powered natural language description',
       parameters: {
@@ -747,10 +789,10 @@ export class MCPServer extends EventEmitter {
         )
         return result
       }
-    })
+    }))
 
     // Robust selector generation
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.generate_selectors',
       description: 'Generate multiple robust selectors for an element',
       parameters: {
@@ -764,10 +806,10 @@ export class MCPServer extends EventEmitter {
         )
         return { strategies }
       }
-    })
+    }))
 
     // Semantic page analysis
-    await this.registerTool({
+    await this.registerTool(createBrowserTool({
       name: 'browser.analyze_page_semantics',
       description: 'Analyze page structure and element relationships',
       parameters: {
@@ -779,7 +821,7 @@ export class MCPServer extends EventEmitter {
         )
         return map
       }
-    })
+    }))
 
     console.log('✅ Debug: Browser tools registered successfully')
   }

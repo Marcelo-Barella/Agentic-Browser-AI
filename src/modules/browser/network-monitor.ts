@@ -111,32 +111,56 @@ export class NetworkMonitor extends EventEmitter {
     }
 
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
       }
 
-      await connection.cdpSession.send('Network.enable')
+      // Validate CDP Network domain is enabled
+      if (!connection.enabledDomains.has('Network')) {
+        throw new Error('CDP Network domain is not enabled for this session')
+      }
+
+      // Check if already monitoring this session
+      if (this.monitoringSessions.has(sessionId)) {
+        this.logger.warn('Network monitoring already active for session', {
+          module: 'NetworkMonitor',
+          operation: 'startMonitoring',
+          data: { sessionId }
+        })
+        return
+      }
+
+      // Enable Network domain (in case it was disabled)
+      try {
+        await connection.cdpSession.send('Network.enable')
+        this.logger.info('Network domain enabled for monitoring', {
+          module: 'NetworkMonitor',
+          operation: 'startMonitoring',
+          data: { sessionId }
+        })
+      } catch (error) {
+        this.logger.error('Failed to enable Network domain', {
+          module: 'NetworkMonitor',
+          operation: 'startMonitoring',
+          error: error instanceof Error ? error : new Error(String(error)),
+          data: { sessionId }
+        })
+        throw new Error(`Failed to enable Network domain: ${error}`)
+      }
       
-      connection.cdpSession.on('Network.requestWillBeSent', (params: any) => {
-        this.handleRequestWillBeSent(sessionId, params)
-      })
-
-      connection.cdpSession.on('Network.responseReceived', (params: any) => {
-        this.handleResponseReceived(sessionId, params)
-      })
-
-      connection.cdpSession.on('Network.loadingFinished', (params: any) => {
-        this.handleLoadingFinished(sessionId, params)
-      })
-
-      connection.cdpSession.on('Network.loadingFailed', (params: any) => {
-        this.handleLoadingFailed(sessionId, params)
-      })
+      // Set up event listeners with error handling
+      this.setupNetworkEventListeners(connection.cdpSession, sessionId)
 
       this.monitoringSessions.add(sessionId)
       
-      this.logger.info('Network monitoring started', {
+      this.logger.info('Network monitoring started successfully', {
         module: 'NetworkMonitor',
         operation: 'startMonitoring',
         data: { sessionId }
@@ -313,6 +337,50 @@ export class NetworkMonitor extends EventEmitter {
       this.logger.error('Failed to handle loading failed', {
         module: 'NetworkMonitor',
         operation: 'handleLoadingFailed',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, params }
+      })
+    }
+  }
+
+  private handleRequestServedFromCache(sessionId: string, params: any): void {
+    try {
+      this.logger.debug('Network request served from cache', {
+        module: 'NetworkMonitor',
+        operation: 'handleRequestServedFromCache',
+        data: {
+          sessionId,
+          requestId: params.requestId,
+          isFromCache: params.isFromCache
+        }
+      })
+      // You might want to update metrics or handle this differently if you want to count cached requests
+    } catch (error) {
+      this.logger.error('Failed to handle request served from cache', {
+        module: 'NetworkMonitor',
+        operation: 'handleRequestServedFromCache',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, params }
+      })
+    }
+  }
+
+  private handleDataReceived(sessionId: string, params: any): void {
+    try {
+      this.logger.debug('Network data received', {
+        module: 'NetworkMonitor',
+        operation: 'handleDataReceived',
+        data: {
+          sessionId,
+          requestId: params.requestId,
+          dataLength: params.dataLength
+        }
+      })
+      // You might want to update metrics or handle this differently
+    } catch (error) {
+      this.logger.error('Failed to handle data received', {
+        module: 'NetworkMonitor',
+        operation: 'handleDataReceived',
         error: error instanceof Error ? error : new Error(String(error)),
         data: { sessionId, params }
       })
@@ -541,5 +609,83 @@ export class NetworkMonitor extends EventEmitter {
     this.monitoringSessions.clear()
     this.isInitialized = false
     this.emit('shutdown')
+  }
+
+  private setupNetworkEventListeners(cdpSession: any, sessionId: string): void {
+    try {
+      cdpSession.on('Network.requestWillBeSent', (params: any) => {
+        this.handleRequestWillBeSent(sessionId, params)
+      })
+
+      cdpSession.on('Network.responseReceived', (params: any) => {
+        this.handleResponseReceived(sessionId, params)
+      })
+
+      cdpSession.on('Network.loadingFinished', (params: any) => {
+        this.handleLoadingFinished(sessionId, params)
+      })
+
+      cdpSession.on('Network.loadingFailed', (params: any) => {
+        this.handleLoadingFailed(sessionId, params)
+      })
+
+      cdpSession.on('Network.requestServedFromCache', (params: any) => {
+        this.handleRequestServedFromCache(sessionId, params)
+      })
+
+      cdpSession.on('Network.dataReceived', (params: any) => {
+        this.handleDataReceived(sessionId, params)
+      })
+
+      this.logger.info('Network event listeners set up successfully', {
+        module: 'NetworkMonitor',
+        operation: 'setupNetworkEventListeners',
+        data: { sessionId }
+      })
+    } catch (error) {
+      this.logger.error('Failed to set up network event listeners', {
+        module: 'NetworkMonitor',
+        operation: 'setupNetworkEventListeners',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+      throw error
+    }
+  }
+
+  private async validateSessionState(sessionId: string): Promise<boolean> {
+    try {
+      // Check if connection is healthy
+      const isConnectionValid = await this.cdpManager.validateConnection(sessionId)
+      if (!isConnectionValid) {
+        this.logger.warn('Session validation failed - connection is unhealthy', {
+          module: 'NetworkMonitor',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      // Additional session state validation
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection || !connection.isActive) {
+        this.logger.warn('Session validation failed - connection is inactive', {
+          module: 'NetworkMonitor',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      return true
+    } catch (error) {
+      this.logger.error('Session validation error', {
+        module: 'NetworkMonitor',
+        operation: 'validateSessionState',
+        sessionId,
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return false
+    }
   }
 }

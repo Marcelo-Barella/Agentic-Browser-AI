@@ -40,44 +40,59 @@ const createSimpleLogger = () => {
 // Tool schemas using Zod for validation
 // Removed filesystem/system schemas per cleanup plan
 
+// Helper function to convert string/boolean to boolean
+const headlessSchema = z.union([z.boolean(), z.string()]).optional().transform(val => {
+  if (val === undefined || val === null) return true // default
+  if (typeof val === 'boolean') return val
+  if (typeof val === 'string') return val !== 'false' && val !== '0' && val !== ''
+  return Boolean(val)
+}).describe("Run browser in headless mode (default: true)")
+
 const BrowserNavigateSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   url: z.string().describe("URL to navigate to"),
   timeout: z.number().optional().describe("Navigation timeout in milliseconds"),
-  waitUntil: z.enum(["load", "domcontentloaded", "networkidle0", "networkidle2"]).optional()
+  waitUntil: z.enum(["load", "domcontentloaded", "networkidle0", "networkidle2"]).optional(),
+  headless: headlessSchema
 })
 
 const BrowserBackSchema = z.object({
-  sessionId: z.string().describe("Browser session identifier")
+  sessionId: z.string().describe("Browser session identifier"),
+  headless: headlessSchema
 })
 
 const BrowserForwardSchema = z.object({
-  sessionId: z.string().describe("Browser session identifier")
+  sessionId: z.string().describe("Browser session identifier"),
+  headless: headlessSchema
 })
 
 const BrowserRefreshSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
-  timeout: z.number().optional().describe("Refresh timeout in milliseconds")
+  timeout: z.number().optional().describe("Refresh timeout in milliseconds"),
+  headless: headlessSchema
 })
 
 const BrowserClickSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().describe("CSS selector for element to click"),
-  timeout: z.number().optional().describe("Click timeout in milliseconds")
+  timeout: z.number().optional().describe("Click timeout in milliseconds"),
+  headless: headlessSchema
 })
 
 const BrowserFillSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().describe("CSS selector for input element"),
   value: z.string().describe("Text content to fill"),
-  timeout: z.number().optional().describe("Fill timeout in milliseconds")
+  timeout: z.number().optional().describe("Fill timeout in milliseconds"),
+  headless: headlessSchema
 })
 
 const BrowserSelectSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().describe("CSS selector for select element"),
   value: z.string().describe("Option value to select"),
-  timeout: z.number().optional().describe("Select timeout in milliseconds")
+  timeout: z.number().optional().describe("Select timeout in milliseconds"),
+  headless: headlessSchema
 })
 
 const BrowserWaitSchema = z.object({
@@ -87,46 +102,62 @@ const BrowserWaitSchema = z.object({
     z.object({ text: z.string() }),
     z.object({ timeout: z.number() })
   ]).describe("Wait condition"),
-  timeout: z.number().optional().describe("Wait timeout in milliseconds")
+  timeout: z.number().optional().describe("Wait timeout in milliseconds"),
+  headless: headlessSchema
 })
 
 const BrowserScrollSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().optional().describe("CSS selector for element to scroll"),
   x: z.number().optional().describe("Horizontal scroll amount"),
-  y: z.number().optional().describe("Vertical scroll amount")
+  y: z.number().optional().describe("Vertical scroll amount"),
+  headless: headlessSchema
 })
 
 const BrowserExtractSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().describe("CSS selector for element to extract"),
-  attribute: z.string().optional().describe("Attribute to extract")
+  attribute: z.string().optional().describe("Attribute to extract"),
+  headless: headlessSchema
 })
 
 const BrowserScreenshotSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   selector: z.string().optional().describe("CSS selector for element to screenshot"),
-  path: z.string().optional().describe("File path to save the screenshot")
+  path: z.string().optional().describe("File path to save the screenshot"),
+  headless: headlessSchema
 })
 
 const BrowserHtmlSchema = z.object({
-  sessionId: z.string().describe("Browser session identifier")
+  sessionId: z.string().describe("Browser session identifier"),
+  headless: headlessSchema
 })
 
 const BrowserTextSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
-  selector: z.string().optional().describe("CSS selector for element to extract text from")
+  selector: z.string().optional().describe("CSS selector for element to extract text from"),
+  headless: headlessSchema
 })
 
 const BrowserExecuteSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
   script: z.string().describe("JavaScript code to execute"),
-  args: z.array(z.any()).optional().describe("Arguments to pass to script")
+  args: z.array(z.any()).optional().describe("Arguments to pass to script"),
+  headless: headlessSchema
 })
 
 const BrowserNetworkSchema = z.object({
   sessionId: z.string().describe("Browser session identifier"),
-  action: z.enum(["start", "stop", "get"]).describe("Network monitoring action")
+  action: z.enum([
+    "start", 
+    "stop", 
+    "get_requests",
+    "get_metrics", 
+    "get_threats",
+    "clear_data",
+    "get"
+  ]).describe("Network monitoring action"),
+  headless: headlessSchema
 })
 
 const BrowserStateSchema = z.object({
@@ -143,11 +174,13 @@ const BrowserStateSchema = z.object({
   ]).describe("State management action"),
   key: z.string().optional().describe("Storage key or cookie name"),
   value: z.string().optional().describe("Storage value or cookie value"),
-  domain: z.string().optional().describe("Cookie domain")
+  domain: z.string().optional().describe("Cookie domain"),
+  headless: headlessSchema
 })
 
 const BrowserInspectSchema = z.object({
   url: z.string().describe("URL to inspect"),
+  headless: headlessSchema
 })
 
 // Removed project analyze schema
@@ -239,7 +272,7 @@ class HybridMCPServer {
     }
   }
 
-  private async getBrowserSession(sessionId: string): Promise<any> {
+  private async getBrowserSession(sessionId: string, headless: boolean = true): Promise<any> {
     console.log(`🔧 [SESSION] Getting browser session: ${sessionId}`)
     
     if (this.browserSessions.size >= this.maxSessions && !this.browserSessions.has(sessionId)) {
@@ -254,7 +287,7 @@ class HybridMCPServer {
     if (!this.browserSessions.has(sessionId)) {
       console.log(`🔧 [SESSION] Creating new browser session: ${sessionId}`)
       try {
-        const cdpManager = new CDPConnectionManager()
+        const cdpManager = new CDPConnectionManager({ headless })
         const browserManager = new BrowserManager()
         
         const session = {
@@ -419,6 +452,10 @@ class HybridMCPServer {
                 waitUntil: {
                   type: "string",
                   description: "Wait condition",
+                },
+                headless: {
+                  type: "boolean",
+                  description: "Run browser in headless mode (default: true)",
                 },
               },
               required: ["sessionId", "url"],
@@ -787,6 +824,10 @@ class HybridMCPServer {
                   type: "string",
                   description: "URL to inspect",
                 },
+                headless: {
+                  type: "boolean",
+                  description: "Run browser in headless mode (default: true)",
+                },
               },
               required: ["url"],
             },
@@ -939,7 +980,8 @@ class HybridMCPServer {
           case ToolName.BROWSER_INSPECT:
             console.log(`🔍 [${new Date().toISOString()}] [REQ-${requestId}] Executing inspectBrowser tool`)
             const browserArgs = BrowserInspectSchema.parse(args)
-            result = await this.inspectBrowser(browserArgs.url)
+            const inspectHeadless = browserArgs.headless !== undefined ? browserArgs.headless : true
+            result = await this.inspectBrowser(browserArgs.url, inspectHeadless)
             break
 
           case ToolName.BROWSER_FIND_ELEMENT_AI:
@@ -1351,6 +1393,7 @@ class HybridMCPServer {
     const url = args.url
     const timeout = args.timeout || this.navigationTimeout
     const waitUntil = args.waitUntil || "load"
+    const headless = args.headless !== undefined ? args.headless : true
 
     console.log(`🔧 [NAVIGATE] Starting browser navigation for session: ${sessionId}`)
 
@@ -1360,12 +1403,13 @@ class HybridMCPServer {
       sessionId,
       url,
       timeout,
-      waitUntil
+      waitUntil,
+      headless
     })
 
     try {
       console.log(`🔧 [NAVIGATE] Getting browser session for: ${sessionId}`)
-      const session = await this.getBrowserSession(sessionId)
+      const session = await this.getBrowserSession(sessionId, headless)
       console.log(`✅ [NAVIGATE] Got browser session for: ${sessionId}`)
       
       console.log(`🔧 [NAVIGATE] Calling navigateToUrl for: ${sessionId}`)
@@ -1645,14 +1689,20 @@ class HybridMCPServer {
 
     try {
       const session = await this.getBrowserSession(sessionId)
-      const element = await session.domInspector.querySelector(sessionId, selector)
-      if (!element) {
-        throw new Error(`Element with selector ${selector} not found`)
-      }
       
-      const attr = element.attributes.find((attr: { name: string; value: string }) => attr.name === attribute)
-      const result = attr ? attr.value : null
-      return `Successfully extracted attribute ${attribute} from element with selector ${selector} for session ${sessionId}: ${result}`
+      // Use JavaScript execution to get the attribute value
+      const script = `
+        const element = document.querySelector('${selector}');
+        if (!element) {
+          throw new Error('Element not found');
+        }
+        return element.getAttribute('${attribute}') || element['${attribute}'] || null;
+      `
+      
+      const result = await session.jsExecutor.executeScript(sessionId, script)
+      const attrValue = result.result || null
+      
+      return `Successfully extracted attribute ${attribute} from element with selector ${selector} for session ${sessionId}: ${attrValue}`
     } catch (error) {
       console.error(`❌ [${new Date().toISOString()}] Browser extract failed:`, error)
       this.logger.error(`❌ [BROWSER_EXTRACT] Browser extract failed`, {
@@ -1753,9 +1803,16 @@ class HybridMCPServer {
 
     try {
       const session = await this.getBrowserSession(sessionId)
-      const document = await session.domInspector.getDocument(sessionId)
-      const html = JSON.stringify(document, null, 2)
-      return `Successfully retrieved complete page HTML for session ${sessionId}: ${html.length} characters`
+      
+      // Use JavaScript execution to get the actual HTML content
+      const script = `
+        return document.documentElement.outerHTML;
+      `
+      
+      const result = await session.jsExecutor.executeScript(sessionId, script)
+      const html = result.result || ''
+      
+      return `Successfully retrieved complete page HTML for session ${sessionId}: ${html}`
     } catch (error) {
       console.error(`❌ [${new Date().toISOString()}] Browser HTML failed:`, error)
       this.logger.error(`❌ [BROWSER_HTML] Browser HTML failed`, {
@@ -1780,12 +1837,19 @@ class HybridMCPServer {
 
     try {
       const session = await this.getBrowserSession(sessionId)
-      const element = await session.domInspector.querySelector(sessionId, selector)
-      if (!element) {
-        throw new Error(`Element with selector ${selector} not found`)
-      }
       
-      const text = element.nodeValue || ''
+      // Use JavaScript execution to get the actual text content
+      const script = `
+        const element = document.querySelector('${selector}');
+        if (!element) {
+          throw new Error('Element not found');
+        }
+        return element.textContent || element.innerText || '';
+      `
+      
+      const result = await session.jsExecutor.executeScript(sessionId, script)
+      const text = result.result || ''
+      
       return `Successfully extracted text content from element with selector ${selector} for session ${sessionId}: ${text}`
     } catch (error) {
       console.error(`❌ [${new Date().toISOString()}] Browser text extraction failed:`, error)
@@ -1843,13 +1907,25 @@ class HybridMCPServer {
     try {
       const session = await this.getBrowserSession(sessionId)
       if (action === "start") {
-        await session.networkMonitor.start();
+        await session.networkMonitor.startMonitoring(sessionId);
         return `Successfully started network monitoring for session ${sessionId}`;
       } else if (action === "stop") {
-        await session.networkMonitor.stop();
+        await session.networkMonitor.stopMonitoring(sessionId);
         return `Successfully stopped network monitoring for session ${sessionId}`;
+      } else if (action === "get_requests") {
+        const requests = await session.networkMonitor.getRequestsBySession(sessionId);
+        return `Successfully retrieved ${requests.length} network requests for session ${sessionId}: ${JSON.stringify(requests, null, 2)}`;
+      } else if (action === "get_metrics") {
+        const metrics = await session.networkMonitor.getNetworkMetrics();
+        return `Successfully retrieved network metrics for session ${sessionId}: ${JSON.stringify(metrics, null, 2)}`;
+      } else if (action === "get_threats") {
+        const threats = await session.networkMonitor.getSecurityThreats();
+        return `Successfully retrieved network threats for session ${sessionId}: ${JSON.stringify(threats, null, 2)}`;
+      } else if (action === "clear_data") {
+        await session.networkMonitor.clearData();
+        return `Successfully cleared network data for session ${sessionId}`;
       } else if (action === "get") {
-        const requests = await session.networkMonitor.getRequests();
+        const requests = await session.networkMonitor.getRequestsBySession(sessionId);
         return `Successfully retrieved ${requests.length} network requests for session ${sessionId}: ${JSON.stringify(requests, null, 2)}`;
       }
       return `Unknown network action: ${action}`;
@@ -1933,14 +2009,14 @@ class HybridMCPServer {
     }
   }
 
-  async inspectBrowser(url: string): Promise<string> {
+  async inspectBrowser(url: string, headless: boolean = true): Promise<string> {
     const timestamp = new Date().toISOString()
     console.log(`🌐 [${timestamp}] Browser inspection requested for: ${url}`)
-    this.logger.info(`🌐 [BROWSER_INSPECT] Browser inspection requested for: ${url}`, { module: 'HybridMCPServer', operation: 'inspectBrowser', url, timestamp })
+    this.logger.info(`🌐 [BROWSER_INSPECT] Browser inspection requested for: ${url}`, { module: 'HybridMCPServer', operation: 'inspectBrowser', url, timestamp, headless })
 
     const sessionId = `inspect_${Date.now()}`
     try {
-      const session = await this.getBrowserSession(sessionId)
+      const session = await this.getBrowserSession(sessionId, headless)
       await session.pageController.navigateToUrl(sessionId, url)
 
       const pageInfo = await session.cdpManager.getPageInfo(sessionId)

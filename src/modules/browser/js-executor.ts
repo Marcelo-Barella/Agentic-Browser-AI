@@ -80,6 +80,12 @@ export class JavaScriptExecutor extends EventEmitter {
     }
 
     try {
+      // Validate session state first
+      const isSessionValid = await this.validateSessionState(sessionId)
+      if (!isSessionValid) {
+        throw new Error('Session state is invalid or connection is unhealthy')
+      }
+
       const validation = await this.validateScript(script)
       if (!validation.isValid) {
         throw new Error(`Script validation failed: ${validation.reason}`)
@@ -88,6 +94,11 @@ export class JavaScriptExecutor extends EventEmitter {
       const connection = await this.cdpManager.getConnection(sessionId)
       if (!connection) {
         throw new Error('Connection not found')
+      }
+
+      // Validate CDP Runtime domain is enabled
+      if (!connection.enabledDomains.has('Runtime')) {
+        throw new Error('CDP Runtime domain is not enabled for this session')
       }
 
       const startTime = Date.now()
@@ -101,7 +112,18 @@ export class JavaScriptExecutor extends EventEmitter {
         executionOptions.contextId = await this.createExecutionContext(sessionId, options.context)
       }
 
-      const result = await connection.page.evaluate(script, executionOptions)
+      // Add timeout handling
+      const timeout = options.timeout || 30000 // Default 30 second timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Script execution timed out after ${timeout}ms`))
+        }, timeout)
+      })
+
+      // Execute script with timeout
+      const executionPromise = connection.page.evaluate(script, executionOptions)
+      const result = await Promise.race([executionPromise, timeoutPromise])
+      
       const executionTime = Date.now() - startTime
 
       const scriptResult: ScriptResult = {
@@ -120,7 +142,8 @@ export class JavaScriptExecutor extends EventEmitter {
           sessionId,
           scriptLength: script.length,
           executionTime,
-          resultType: typeof result
+          resultType: typeof result,
+          timeout
         }
       })
 
@@ -460,5 +483,51 @@ export class JavaScriptExecutor extends EventEmitter {
     this.executionHistory = []
     this.isInitialized = false
     this.emit('shutdown')
+  }
+
+  private async validateSessionState(sessionId: string): Promise<boolean> {
+    try {
+      // Check if connection is healthy
+      const isConnectionValid = await this.cdpManager.validateConnection(sessionId)
+      if (!isConnectionValid) {
+        this.logger.warn('Session validation failed - connection is unhealthy', {
+          module: 'JavaScriptExecutor',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      // Additional session state validation
+      const connection = await this.cdpManager.getConnection(sessionId)
+      if (!connection || !connection.isActive) {
+        this.logger.warn('Session validation failed - connection is inactive', {
+          module: 'JavaScriptExecutor',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      // Check if page is accessible
+      if (connection.page.isClosed()) {
+        this.logger.warn('Session validation failed - page is closed', {
+          module: 'JavaScriptExecutor',
+          operation: 'validateSessionState',
+          sessionId
+        })
+        return false
+      }
+
+      return true
+    } catch (error) {
+      this.logger.error('Session validation error', {
+        module: 'JavaScriptExecutor',
+        operation: 'validateSessionState',
+        sessionId,
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      return false
+    }
   }
 }
