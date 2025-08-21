@@ -823,6 +823,113 @@ export class MCPServer extends EventEmitter {
       }
     }))
 
+    // Register console inspection tools
+    await this.registerTool(createBrowserTool({
+      name: 'browser.startConsoleInspection',
+      description: 'Start capturing console logs from a browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        includeErrors: { type: 'boolean', required: false },
+        includeWarnings: { type: 'boolean', required: false },
+        includeInfo: { type: 'boolean', required: false },
+        includeLogs: { type: 'boolean', required: false },
+        includeDebug: { type: 'boolean', required: false },
+        maxLogs: { type: 'number', required: false },
+        captureStackTraces: { type: 'boolean', required: false },
+        captureSourceInfo: { type: 'boolean', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const options = {
+          includeErrors: params['includeErrors'] as boolean,
+          includeWarnings: params['includeWarnings'] as boolean,
+          includeInfo: params['includeInfo'] as boolean,
+          includeLogs: params['includeLogs'] as boolean,
+          includeDebug: params['includeDebug'] as boolean,
+          maxLogs: params['maxLogs'] as number,
+          captureStackTraces: params['captureStackTraces'] as boolean,
+          captureSourceInfo: params['captureSourceInfo'] as boolean
+        }
+        
+        return await browserManager.startConsoleInspection(
+          params['sessionId'] as string,
+          options
+        )
+      }
+    }))
+
+    await this.registerTool(createBrowserTool({
+      name: 'browser.getConsoleLogs',
+      description: 'Retrieve captured console logs from a browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        level: { type: 'string', required: false },
+        limit: { type: 'number', required: false },
+        clearAfter: { type: 'boolean', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const options = {
+          level: params['level'] as 'log' | 'info' | 'warn' | 'error' | 'debug',
+          limit: params['limit'] as number,
+          clearAfter: params['clearAfter'] as boolean
+        }
+        
+        return await browserManager.getConsoleLogs(
+          params['sessionId'] as string,
+          options
+        )
+      }
+    }))
+
+    await this.registerTool(createBrowserTool({
+      name: 'browser.clearConsoleLogs',
+      description: 'Clear all console logs for a browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        await browserManager.clearConsoleLogs(params['sessionId'] as string)
+        return { success: true }
+      }
+    }))
+
+    await this.registerTool(createBrowserTool({
+      name: 'browser.stopConsoleInspection',
+      description: 'Stop console inspection for a browser session',
+      parameters: {
+        sessionId: { type: 'string', required: true }
+      },
+      handler: async (params: Record<string, any>) => {
+        return await browserManager.stopConsoleInspection(params['sessionId'] as string)
+      }
+    }))
+
+    await this.registerTool(createBrowserTool({
+      name: 'browser.exportConsoleLogs',
+      description: 'Export console logs in specified format',
+      parameters: {
+        sessionId: { type: 'string', required: true },
+        format: { type: 'string', required: true },
+        includeMetadata: { type: 'boolean', required: false },
+        includeStackTraces: { type: 'boolean', required: false },
+        includeSourceInfo: { type: 'boolean', required: false },
+        filterByLevel: { type: 'array', required: false }
+      },
+      handler: async (params: Record<string, any>) => {
+        const options = {
+          format: params['format'] as 'json' | 'text' | 'csv',
+          includeMetadata: params['includeMetadata'] as boolean,
+          includeStackTraces: params['includeStackTraces'] as boolean,
+          includeSourceInfo: params['includeSourceInfo'] as boolean,
+          filterByLevel: params['filterByLevel'] as ('log' | 'info' | 'warn' | 'error' | 'debug')[]
+        }
+        
+        return await browserManager.exportConsoleLogs(
+          params['sessionId'] as string,
+          options
+        )
+      }
+    }))
+
     console.log('✅ Debug: Browser tools registered successfully')
   }
 

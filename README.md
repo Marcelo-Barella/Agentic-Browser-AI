@@ -115,6 +115,7 @@ npm run sse
 - `browser.fill` - Intelligent form filling with validation
 - `browser.execute` - JavaScript execution with error handling
 - `browser.state` - Browser state management and persistence
+- `console_inspector` - Console inspection for browser sessions (start, stop, logs, clear, export)
 
 ### Screenshot & Image Processing
 - `screenshot.capture` - Intelligent screenshot capture with compression
@@ -223,6 +224,44 @@ await mcp.call('browser.state', {
 await mcp.call('browser.state', {
   action: 'restore',
   key: 'login-session'
+});
+```
+
+### Console Inspector
+```javascript
+// Start console inspection
+await mcp.call('console_inspector', {
+  sessionId: 'my-session',
+  action: 'start',
+  options: {
+    includeErrors: true,
+    includeWarnings: true,
+    includeInfo: true,
+    includeLogs: true,
+    maxLogs: 1000
+  }
+});
+
+// Get console logs
+const logs = await mcp.call('console_inspector', {
+  sessionId: 'my-session',
+  action: 'logs',
+  options: {
+    level: 'error',
+    limit: 50,
+    includeStackTraces: true
+  }
+});
+
+// Export console logs
+await mcp.call('console_inspector', {
+  sessionId: 'my-session',
+  action: 'export',
+  options: {
+    format: 'json',
+    level: 'all',
+    path: './console-logs.json'
+  }
 });
 ```
 

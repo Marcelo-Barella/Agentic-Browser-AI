@@ -994,6 +994,172 @@ export class BrowserTools {
     return this.browserManager.isReady()
   }
 
+  // Console inspection methods
+  async startConsoleInspection(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.startConsoleInspection(sessionId, options)
+      
+      this.logger.info('Console inspection started', {
+        module: 'BrowserTools',
+        operation: 'startConsoleInspection',
+        data: { sessionId, options }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to start console inspection', {
+        module: 'BrowserTools',
+        operation: 'startConsoleInspection',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, options }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async getConsoleLogs(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const logs = await this.browserManager.getConsoleLogs(sessionId, options)
+      
+      this.logger.info('Console logs retrieved', {
+        module: 'BrowserTools',
+        operation: 'getConsoleLogs',
+        data: { sessionId, logCount: logs.length, options }
+      })
+
+      return {
+        success: true,
+        data: { logs, count: logs.length },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to get console logs', {
+        module: 'BrowserTools',
+        operation: 'getConsoleLogs',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, options }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async clearConsoleLogs(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      await this.browserManager.clearConsoleLogs(sessionId)
+      
+      this.logger.info('Console logs cleared', {
+        module: 'BrowserTools',
+        operation: 'clearConsoleLogs',
+        data: { sessionId }
+      })
+
+      return {
+        success: true,
+        data: { sessionId },
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to clear console logs', {
+        module: 'BrowserTools',
+        operation: 'clearConsoleLogs',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async stopConsoleInspection(sessionId: string): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.stopConsoleInspection(sessionId)
+      
+      this.logger.info('Console inspection stopped', {
+        module: 'BrowserTools',
+        operation: 'stopConsoleInspection',
+        data: { sessionId }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to stop console inspection', {
+        module: 'BrowserTools',
+        operation: 'stopConsoleInspection',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
+  async exportConsoleLogs(sessionId: string, options: any = {}): Promise<BrowserToolResult> {
+    try {
+      const result = await this.browserManager.exportConsoleLogs(sessionId, options)
+      
+      this.logger.info('Console logs exported', {
+        module: 'BrowserTools',
+        operation: 'exportConsoleLogs',
+        data: { sessionId, format: options.format, messageCount: result.messageCount }
+      })
+
+      return {
+        success: true,
+        data: result,
+        sessionId,
+        timestamp: new Date()
+      }
+    } catch (error) {
+      this.logger.error('Failed to export console logs', {
+        module: 'BrowserTools',
+        operation: 'exportConsoleLogs',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: { sessionId, options }
+      })
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+        timestamp: new Date()
+      }
+    }
+  }
+
   async shutdown(): Promise<void> {
     for (const sessionId of this.activeSessions) {
       await this.closeSession(sessionId)

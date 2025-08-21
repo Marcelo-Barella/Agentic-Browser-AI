@@ -3,6 +3,7 @@ import { getLogger } from '../../core/logger.js'
 import { ErrorHandler } from '../../core/error-handler.js'
 import { CDPConnectionManager } from './cdp-connection-manager.js'
 import { DOMInspector } from './dom-inspector.js'
+import { ConsoleInspector } from './console-inspector.js'
 
 export interface PageState {
   url: string
@@ -47,6 +48,7 @@ export interface ViewportOptions {
 export class PageController extends EventEmitter {
   private cdpManager: CDPConnectionManager
   private domInspector: DOMInspector
+  private consoleInspector: ConsoleInspector
   private logger: any
   private errorHandler: ErrorHandler
   private pageStates: Map<string, PageState> = new Map()
@@ -56,6 +58,7 @@ export class PageController extends EventEmitter {
     super()
     this.cdpManager = cdpManager
     this.domInspector = new DOMInspector(cdpManager)
+    this.consoleInspector = new ConsoleInspector()
     this.logger = getLogger()
     this.errorHandler = new ErrorHandler()
   }
@@ -66,7 +69,14 @@ export class PageController extends EventEmitter {
     }
 
     try {
-      await this.errorHandler.initialize()
+      await Promise.all([
+        this.errorHandler.initialize(),
+        this.consoleInspector.initialize()
+      ])
+      
+      // Set up console message event listeners
+      this.setupConsoleEventListeners()
+      
       this.isInitialized = true
       this.emit('initialized')
       
@@ -611,7 +621,61 @@ export class PageController extends EventEmitter {
     return this.isInitialized
   }
 
+  private setupConsoleEventListeners(): void {
+    // Listen for console messages from CDP connection manager
+    this.cdpManager.on('consoleMessage', (sessionId: string, message: any) => {
+      this.consoleInspector.addConsoleMessage(sessionId, message).catch(error => {
+        this.logger.error('Failed to add console message', {
+          module: 'PageController',
+          operation: 'setupConsoleEventListeners',
+          error: error instanceof Error ? error : new Error(String(error)),
+          data: { sessionId, message }
+        })
+      })
+    })
+
+    // Listen for page close events to cleanup console inspection
+    this.cdpManager.on('pageClosed', (sessionId: string) => {
+      this.consoleInspector.cleanupSession(sessionId).catch(error => {
+        this.logger.error('Failed to cleanup console inspection session', {
+          module: 'PageController',
+          operation: 'setupConsoleEventListeners',
+          error: error instanceof Error ? error : new Error(String(error)),
+          data: { sessionId }
+        })
+      })
+    })
+  }
+
+  // Console inspection methods
+  async startConsoleInspection(sessionId: string, options?: any): Promise<any> {
+    return await this.consoleInspector.startInspection(sessionId, options)
+  }
+
+  async stopConsoleInspection(sessionId: string): Promise<any> {
+    return await this.consoleInspector.stopInspection(sessionId)
+  }
+
+  async getConsoleLogs(sessionId: string, options?: any): Promise<any[]> {
+    return await this.consoleInspector.getConsoleLogs(sessionId, options)
+  }
+
+  async clearConsoleLogs(sessionId: string): Promise<void> {
+    return await this.consoleInspector.clearConsoleLogs(sessionId)
+  }
+
+  async exportConsoleLogs(sessionId: string, options?: any): Promise<any> {
+    return await this.consoleInspector.exportConsoleLogs(sessionId, options)
+  }
+
   async shutdown(): Promise<void> {
+    // Cleanup console inspection sessions
+    const activeInspections = await this.consoleInspector.getAllActiveInspections()
+    for (const inspection of activeInspections) {
+      await this.consoleInspector.cleanupSession(inspection.sessionId)
+    }
+
+    await this.consoleInspector.shutdown()
     this.pageStates.clear()
     this.isInitialized = false
     this.emit('shutdown')

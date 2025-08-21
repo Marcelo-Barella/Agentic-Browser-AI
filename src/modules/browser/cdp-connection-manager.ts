@@ -246,6 +246,9 @@ export class CDPConnectionManager extends EventEmitter {
       // Set up page event listeners for monitoring
       this.setupPageEventListeners(page, sessionId)
       
+      // Set up console event listeners for console inspection
+      this.setupConsoleEventListeners(cdpSession, sessionId)
+      
       console.log(`🔧 [CDP] Connection created successfully for session: ${sessionId}`)
       this.emit('connectionCreated', sessionId, connection)
       
@@ -322,6 +325,84 @@ export class CDPConnectionManager extends EventEmitter {
       console.error(`🔧 [CDP] Page JavaScript error for session ${sessionId}:`, error)
       this.emit('pageJavaScriptError', sessionId, error)
     })
+  }
+
+  private setupConsoleEventListeners(cdpSession: CDPSession, sessionId: string): void {
+    // Listen for console API calls
+    cdpSession.on('Runtime.consoleAPICalled', (params: any) => {
+      const consoleMessage = {
+        level: this.mapConsoleTypeToLevel(params.type),
+        message: this.formatConsoleMessage(params.args),
+        source: 'console' as const,
+        url: params.executionContextId ? undefined : undefined, // Will be populated if available
+        lineNumber: params.stackTrace?.callFrames?.[0]?.lineNumber,
+        columnNumber: params.stackTrace?.callFrames?.[0]?.columnNumber,
+        stackTrace: params.stackTrace ? JSON.stringify(params.stackTrace) : undefined,
+        sessionId,
+        metadata: {
+          executionContextId: params.executionContextId,
+          timestamp: params.timestamp,
+          type: params.type
+        }
+      }
+
+      this.emit('consoleMessage', sessionId, consoleMessage)
+    })
+
+    // Listen for JavaScript exceptions
+    cdpSession.on('Runtime.exceptionThrown', (params: any) => {
+      const exceptionMessage = {
+        level: 'error' as const,
+        message: params.exceptionDetails?.text || 'JavaScript exception occurred',
+        source: 'exception' as const,
+        url: params.exceptionDetails?.url,
+        lineNumber: params.exceptionDetails?.lineNumber,
+        columnNumber: params.exceptionDetails?.columnNumber,
+        stackTrace: params.exceptionDetails?.stackTrace ? JSON.stringify(params.exceptionDetails.stackTrace) : undefined,
+        sessionId,
+        metadata: {
+          exceptionId: params.exceptionId,
+          timestamp: params.timestamp,
+          exceptionDetails: params.exceptionDetails
+        }
+      }
+
+      this.emit('consoleMessage', sessionId, exceptionMessage)
+    })
+  }
+
+  private mapConsoleTypeToLevel(type: string): 'log' | 'info' | 'warn' | 'error' | 'debug' {
+    switch (type) {
+      case 'log':
+        return 'log'
+      case 'info':
+        return 'info'
+      case 'warning':
+        return 'warn'
+      case 'error':
+        return 'error'
+      case 'debug':
+        return 'debug'
+      default:
+        return 'log'
+    }
+  }
+
+  private formatConsoleMessage(args: any[]): string {
+    if (!args || args.length === 0) {
+      return ''
+    }
+
+    return args.map(arg => {
+      if (typeof arg.value === 'string') {
+        return arg.value
+      } else if (arg.value !== undefined) {
+        return JSON.stringify(arg.value)
+      } else if (arg.description) {
+        return arg.description
+      }
+      return '[Object]'
+    }).join(' ')
   }
 
   async getConnection(sessionId: string): Promise<CDPConnection | undefined> {

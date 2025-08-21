@@ -5,7 +5,7 @@
  * Coordinates all modules and provides the main interface for the system
  */
 
-import { MCPServer } from './core/mcp-server'
+import { MCPServer } from './core/mcp-server.js'
 // Removed non-browser modules per cleanup plan
 import { ErrorHandler } from './core/error-handler.js'
 // Removed documentation generator per cleanup plan

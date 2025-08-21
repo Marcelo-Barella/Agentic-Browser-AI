@@ -183,6 +183,32 @@ const BrowserInspectSchema = z.object({
   headless: headlessSchema
 })
 
+// Console Inspector Tool Schema
+const ConsoleInspectorSchema = z.object({
+  sessionId: z.string().describe("Browser session identifier"),
+  action: z.enum(["start", "stop", "logs", "clear", "export"]).describe("Console inspector action"),
+  options: z.object({
+    // Inspection options (for start action)
+    includeErrors: z.boolean().optional().describe("Include error messages"),
+    includeWarnings: z.boolean().optional().describe("Include warning messages"),
+    includeInfo: z.boolean().optional().describe("Include info messages"),
+    includeLogs: z.boolean().optional().describe("Include log messages"),
+    includeDebug: z.boolean().optional().describe("Include debug messages"),
+    maxLogs: z.number().optional().describe("Maximum number of logs to capture"),
+    captureStackTraces: z.boolean().optional().describe("Capture stack traces"),
+    captureSourceInfo: z.boolean().optional().describe("Capture source information"),
+    // Log retrieval options (for logs action)
+    level: z.enum(["all", "error", "warning", "info", "log", "debug"]).optional().describe("Log level filter"),
+    limit: z.number().optional().describe("Maximum number of logs to return"),
+    includeStackTraces: z.boolean().optional().describe("Include stack traces"),
+    includeSourceInfo: z.boolean().optional().describe("Include source information"),
+    // Export options (for export action)
+    format: z.enum(["json", "csv", "txt", "html"]).optional().describe("Export format"),
+    path: z.string().optional().describe("Export file path")
+  }).optional().describe("Action-specific options"),
+  headless: headlessSchema
+})
+
 // Removed project analyze schema
 
 // Tool names constants
@@ -208,6 +234,8 @@ const ToolName = {
   BROWSER_FIND_ELEMENT_AI: "browser_find_element_ai",
   BROWSER_GENERATE_SELECTORS: "browser_generate_selectors",
   BROWSER_ANALYZE_PAGE_SEMANTICS: "browser_analyze_page_semantics",
+  // Console Inspector Tool
+  CONSOLE_INSPECTOR: "console_inspector",
   // Removed project analyze
 } as const
 
@@ -832,6 +860,89 @@ class HybridMCPServer {
               required: ["url"],
             },
           },
+          // Console Inspector Tool
+          {
+            name: ToolName.CONSOLE_INSPECTOR,
+            description: "Console inspector for browser sessions - start, stop, get logs, clear, or export console data",
+            inputSchema: {
+              type: "object",
+              properties: {
+                sessionId: {
+                  type: "string",
+                  description: "Browser session identifier",
+                },
+                action: {
+                  type: "string",
+                  description: "Console inspector action",
+                  enum: ["start", "stop", "logs", "clear", "export"],
+                },
+                options: {
+                  type: "object",
+                  description: "Action-specific options",
+                  properties: {
+                    // Inspection options (for start action)
+                    includeErrors: {
+                      type: "boolean",
+                      description: "Include error messages",
+                    },
+                    includeWarnings: {
+                      type: "boolean",
+                      description: "Include warning messages",
+                    },
+                    includeInfo: {
+                      type: "boolean",
+                      description: "Include info messages",
+                    },
+                    includeLogs: {
+                      type: "boolean",
+                      description: "Include log messages",
+                    },
+                    includeDebug: {
+                      type: "boolean",
+                      description: "Include debug messages",
+                    },
+                    maxLogs: {
+                      type: "number",
+                      description: "Maximum number of logs to capture",
+                    },
+                    captureStackTraces: {
+                      type: "boolean",
+                      description: "Capture stack traces",
+                    },
+                    captureSourceInfo: {
+                      type: "boolean",
+                      description: "Capture source information",
+                    },
+                    // Log retrieval options (for logs action)
+                    level: {
+                      type: "string",
+                      description: "Log level filter",
+                      enum: ["all", "error", "warning", "info", "log", "debug"],
+                    },
+                    limit: {
+                      type: "number",
+                      description: "Maximum number of logs to return",
+                    },
+                    // Export options (for export action)
+                    format: {
+                      type: "string",
+                      description: "Export format",
+                      enum: ["json", "csv", "txt", "html"],
+                    },
+                    path: {
+                      type: "string",
+                      description: "Export file path",
+                    },
+                  },
+                },
+                headless: {
+                  type: "boolean",
+                  description: "Run browser in headless mode (default: true)",
+                },
+              },
+              required: ["sessionId", "action"],
+            },
+          },
         ]
 
         console.log(`✅ [${new Date().toISOString()}] [REQ-${requestId}] Returning ${tools.length} tools`)
@@ -1012,6 +1123,12 @@ class HybridMCPServer {
               const map = await session.browserManager.analyzePageSemanticsAI(a.sessionId)
               result = `Page semantic map: ${JSON.stringify(map, null, 2)}`
             }
+            break
+
+          case ToolName.CONSOLE_INSPECTOR:
+            console.log(`🔍 [${new Date().toISOString()}] [REQ-${requestId}] Executing consoleInspector tool`)
+            const consoleArgs = ConsoleInspectorSchema.parse(args)
+            result = await this.consoleInspector(consoleArgs)
             break
 
           // Removed project analyze tool
@@ -2006,6 +2123,85 @@ class HybridMCPServer {
         error: error instanceof Error ? error : new Error(String(error))
       })
       throw new Error(`Failed to manage browser state for session ${sessionId}: ${error}`)
+    }
+  }
+
+  async consoleInspector(args: z.infer<typeof ConsoleInspectorSchema>): Promise<string> {
+    const sessionId = args.sessionId
+    const action = args.action
+    const options = args.options || {}
+    const headless = args.headless !== undefined ? args.headless : true
+
+    console.log(`🔍 [CONSOLE_INSPECTOR] Executing ${action} for session: ${sessionId}`)
+    this.logger.info(`🔍 [CONSOLE_INSPECTOR] Executing ${action} for session: ${sessionId}`, {
+      module: 'HybridMCPServer',
+      operation: 'consoleInspector',
+      sessionId,
+      action,
+      options,
+      headless
+    })
+
+    try {
+      const session = await this.getBrowserSession(sessionId, headless)
+      
+      switch (action) {
+        case 'start':
+          const inspectionOptions = {
+            includeErrors: options.includeErrors ?? true,
+            includeWarnings: options.includeWarnings ?? true,
+            includeInfo: options.includeInfo ?? true,
+            includeLogs: options.includeLogs ?? true,
+            includeDebug: options.includeDebug ?? false,
+            maxLogs: options.maxLogs ?? 1000,
+            captureStackTraces: options.captureStackTraces ?? true,
+            captureSourceInfo: options.captureSourceInfo ?? true
+          }
+          const inspectionSession = await session.pageController.startConsoleInspection(sessionId, inspectionOptions)
+          return `Console inspection started for session ${sessionId}. Session ID: ${inspectionSession.sessionId}`
+          
+        case 'stop':
+          const stoppedSession = await session.pageController.stopConsoleInspection(sessionId)
+          return `Console inspection stopped for session ${sessionId}. Session ID: ${stoppedSession.sessionId}`
+          
+        case 'logs':
+          const logOptions = {
+            level: options.level ?? 'all',
+            limit: options.limit ?? 100,
+            includeStackTraces: options.includeStackTraces ?? true,
+            includeSourceInfo: options.includeSourceInfo ?? true
+          }
+          const logs = await session.pageController.getConsoleLogs(sessionId, logOptions)
+          return `Console logs for session ${sessionId}:\n\n${JSON.stringify(logs, null, 2)}`
+          
+        case 'clear':
+          await session.pageController.clearConsoleLogs(sessionId)
+          return `Console logs cleared for session ${sessionId}`
+          
+        case 'export':
+          const exportOptions = {
+            format: options.format ?? 'json',
+            level: options.level ?? 'all',
+            includeStackTraces: options.includeStackTraces ?? true,
+            includeSourceInfo: options.includeSourceInfo ?? true,
+            path: options.path
+          }
+          const exportResult = await session.pageController.exportConsoleLogs(sessionId, exportOptions)
+          return `Console logs exported for session ${sessionId}:\n\n${JSON.stringify(exportResult, null, 2)}`
+          
+        default:
+          throw new Error(`Unknown console inspector action: ${action}`)
+      }
+    } catch (error) {
+      console.error(`❌ [CONSOLE_INSPECTOR] Console inspector action ${action} failed for session: ${sessionId}`, error)
+      this.logger.error(`❌ [CONSOLE_INSPECTOR] Console inspector action failed`, {
+        module: 'HybridMCPServer',
+        operation: 'consoleInspector',
+        sessionId,
+        action,
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+      throw new Error(`Failed to execute console inspector action ${action} for session ${sessionId}: ${error}`)
     }
   }
 

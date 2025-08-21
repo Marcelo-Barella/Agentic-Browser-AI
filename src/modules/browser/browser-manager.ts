@@ -13,6 +13,8 @@ import { VisualTestingService, VisualTestConfig, VisualTestResult } from '../tes
 import { PerformanceTestingService, PerformanceTestResult } from '../testing/performance-testing.js'
 import { ArtifactManager, RecordingOptions, RecordingResult, TestArtifact } from '../testing/artifact-manager.js'
 import { convertHeadlessParameter } from './browser-utils.js'
+import { ConsoleInspectionOptions, ConsoleExportOptions } from './console-types.js'
+import { ErrorHandler } from '../../core/error-handler.js'
 
 export interface BrowserSession {
   sessionId: string
@@ -55,6 +57,7 @@ export class BrowserManager extends EventEmitter {
   private visualTesting: VisualTestingService
   private performanceTesting: PerformanceTestingService
   private artifactManager: ArtifactManager
+  private errorHandler: ErrorHandler
   private sessions: Map<string, BrowserSession> = new Map()
   private operations: BrowserOperation[] = []
   private isInitialized: boolean = false
@@ -62,6 +65,7 @@ export class BrowserManager extends EventEmitter {
   constructor() {
     super()
     
+    this.errorHandler = new ErrorHandler()
     this.securityManager = new BrowserSecurityManager({
       allowedDomains: [] // Empty array allows all domains
     })
@@ -88,6 +92,7 @@ export class BrowserManager extends EventEmitter {
 
     try {
       await Promise.all([
+        this.errorHandler.initialize(),
         this.securityManager.initialize(),
         this.cdpManager.initialize(),
         this.pageController.initialize(),
@@ -682,6 +687,128 @@ export class BrowserManager extends EventEmitter {
 
   isReady(): boolean {
     return this.isInitialized
+  }
+
+  // Console inspection methods
+  async startConsoleInspection(sessionId: string, options: ConsoleInspectionOptions = {}): Promise<any> {
+    try {
+      const session = this.sessions.get(sessionId)
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`)
+      }
+
+      const result = await this.pageController.startConsoleInspection(sessionId, options)
+      
+      this.logOperation({
+        type: 'inspect',
+        sessionId,
+        options,
+        timestamp: new Date()
+      })
+
+      return result
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error as Error,
+        {
+          module: 'BrowserManager',
+          operation: 'startConsoleInspection',
+          parameters: { sessionId, options }
+        }
+      )
+      throw error
+    }
+  }
+
+  async getConsoleLogs(
+    sessionId: string,
+    options: {
+      level?: 'log' | 'info' | 'warn' | 'error' | 'debug'
+      limit?: number
+      clearAfter?: boolean
+    } = {}
+  ): Promise<any[]> {
+    try {
+      const session = this.sessions.get(sessionId)
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`)
+      }
+
+      return await this.pageController.getConsoleLogs(sessionId, options)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error as Error,
+        {
+          module: 'BrowserManager',
+          operation: 'getConsoleLogs',
+          parameters: { sessionId, options }
+        }
+      )
+      throw error
+    }
+  }
+
+  async clearConsoleLogs(sessionId: string): Promise<void> {
+    try {
+      const session = this.sessions.get(sessionId)
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`)
+      }
+
+      await this.pageController.clearConsoleLogs(sessionId)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error as Error,
+        {
+          module: 'BrowserManager',
+          operation: 'clearConsoleLogs',
+          parameters: { sessionId }
+        }
+      )
+      throw error
+    }
+  }
+
+  async stopConsoleInspection(sessionId: string): Promise<any> {
+    try {
+      const session = this.sessions.get(sessionId)
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`)
+      }
+
+      return await this.pageController.stopConsoleInspection(sessionId)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error as Error,
+        {
+          module: 'BrowserManager',
+          operation: 'stopConsoleInspection',
+          parameters: { sessionId }
+        }
+      )
+      throw error
+    }
+  }
+
+  async exportConsoleLogs(sessionId: string, options: ConsoleExportOptions): Promise<any> {
+    try {
+      const session = this.sessions.get(sessionId)
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`)
+      }
+
+      return await this.pageController.exportConsoleLogs(sessionId, options)
+    } catch (error) {
+      await this.errorHandler.handleError(
+        error as Error,
+        {
+          module: 'BrowserManager',
+          operation: 'exportConsoleLogs',
+          parameters: { sessionId, options }
+        }
+      )
+      throw error
+    }
   }
 
   async shutdown(): Promise<void> {
